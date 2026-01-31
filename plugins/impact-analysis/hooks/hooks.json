@@ -1,0 +1,9 @@
+{
+  "hooks": [
+    {
+      "event": "SessionStart",
+      "command": "../scripts/validate.sh",
+      "description": "セッション開始時に必要なバイナリの存在をチェックする"
+    }
+  ]
+}

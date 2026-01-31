@@ -1,0 +1,13 @@
+{
+  "name": "skaji18/claude-plugins",
+  "description": "Claude Code plugins collection by skaji18",
+  "version": "1.0.0",
+  "plugins": [
+    {
+      "name": "impact-analysis",
+      "path": "plugins/impact-analysis",
+      "description": "PHPコードの影響範囲を調査するスキル",
+      "version": "1.0.0"
+    }
+  ]
+}

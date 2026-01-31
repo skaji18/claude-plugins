@@ -1,0 +1,24 @@
+{
+  "name": "impact-analysis",
+  "version": "1.0.0",
+  "description": "PHPコードの影響範囲を調査するスキル。phprefs/phprefs-walk を使ったBFS探索で、関数・メソッド変更時の影響を機械的に追跡し、evidence.tsv と summary.md を生成する。",
+  "author": "skaji18",
+  "license": "MIT",
+  "skills": [
+    {
+      "name": "impact-analysis",
+      "path": "../skills/impact-analysis/SKILL.md"
+    }
+  ],
+  "hooks": {
+    "path": "../hooks/hooks.json"
+  },
+  "scripts": {
+    "setup": "../scripts/setup.sh",
+    "validate": "../scripts/validate.sh"
+  },
+  "dependencies": {
+    "binaries": ["phprefs", "phprefs-walk", "intelephense", "rg"],
+    "runtime": ["go", "node"]
+  }
+}
