@@ -1,10 +1,10 @@
 ---
 name: impact-analysis
-description: PHPコードの影響範囲を調査するスキル
+description: コードの影響範囲を調査するスキル（PHP / JS / TS 対応）
 user-invocable: true
 allowed-tools:
-  - Bash(phprefs*)
-  - Bash(phprefs-walk*)
+  - Bash(lsprefs*)
+  - Bash(lsprefs-walk*)
   - Bash(rg*)
   - Read
   - Grep
@@ -12,17 +12,19 @@ allowed-tools:
   - Write
 ---
 
-# impact-analysis: PHP コード影響調査スキル
+# impact-analysis: コード影響調査スキル
 
-あなたは PHP コードの影響調査を行うスキルです。
-ユーザーの調査リクエスト（自然言語）を受け取り、既存ツール（`phprefs-walk`, `phprefs`, `rg`）を使って影響範囲を機械的に追跡し、**evidence.tsv**（証跡一覧）と **summary.md**（人間用レポート）を生成します。
+あなたはコードの影響調査を行うスキルです。
+ユーザーの調査リクエスト（自然言語）を受け取り、既存ツール（`lsprefs-walk`, `lsprefs`, `rg`）を使って影響範囲を機械的に追跡し、**evidence.tsv**（証跡一覧）と **summary.md**（人間用レポート）を生成します。
+
+**対応言語**: PHP, JavaScript, TypeScript
 
 ## 前提条件
 
 以下のツールが利用可能であること:
-- `phprefs` / `phprefs-walk` — 影響追跡ツール（Go バイナリ）
+- `lsprefs` / `lsprefs-walk` — 影響追跡ツール（Go バイナリ）
 - `rg` (ripgrep) — コード検索
-- `intelephense` — PHP LSP サーバー
+- LSP サーバー（言語に応じて自動選択、下記参照）
 
 ツールのパスは以下の方法で決定します（優先順位順）:
 1. ユーザーがスキル呼び出し時に明示した値
@@ -33,12 +35,32 @@ allowed-tools:
 |------|------|-----------|
 | `AI_TOOLS_DIR` | ai-tools リポジトリのパス | `~/projects/ai-tools` |
 | `REPO_PATH` | 調査対象リポジトリのパス | （ユーザー指定必須） |
-| `INTELEPHENSE` | intelephense バイナリパス | `intelephense` |
 | `OUT_DIR` | 出力ディレクトリ | `${AI_TOOLS_DIR}/out` |
 | `MAX_DEPTH` | BFS 最大深度 | `4` |
 | `MAX_NODES` | 最大ノード数 | `2000` |
 | `EXCLUDE` | 除外パターン（カンマ区切り） | `vendor/**,.git/**,.cache/**,node_modules/**,tests/**` |
 | `ORIGINS` | 起点の数（1=単一起点, 2+=複数起点で merge が必要） | `1` |
+
+## 言語自動判定
+
+起点ファイルの拡張子から使用する LSP サーバーを自動決定します。この判定は STEP 1 で起点を特定した直後に行います。
+
+| 拡張子 | 言語 | LSP サーバーコマンド (`--server` に渡す値) | rg のグロブ |
+|--------|------|------------------------------------------|------------|
+| `.php` | PHP | `intelephense --stdio` | `-g'*.php'` |
+| `.js`, `.jsx` | JavaScript | `typescript-language-server --stdio` | `-g'*.{js,jsx}'` |
+| `.ts`, `.tsx` | TypeScript | `typescript-language-server --stdio` | `-g'*.{ts,tsx}'` |
+
+**判定ルール**:
+1. 起点ファイルの拡張子を確認する
+2. 上記テーブルから対応する `LSP_SERVER` コマンドを決定する
+3. `lsprefs start --server "${LSP_SERVER}"` と `lsprefs-walk run --server "${LSP_SERVER}"` の両方にこの値を使用する
+4. ユーザーが `--server` を明示的に指定した場合はそちらを優先する
+
+**rg 検索時のグロブ**:
+- 言語に応じて rg のグロブパターンを切り替える
+- PHP の場合: `rg --vimgrep "<シンボル名>" -g'*.php' .`
+- JS/TS の場合: `rg --vimgrep "<シンボル名>" -g'*.{ts,tsx,js,jsx}' .`
 
 ## 実行手順
 
@@ -77,8 +99,9 @@ allowed-tools:
 対象プロジェクトの全体像を把握します:
 1. `CLAUDE.md` またはプロジェクトルートの README.md / ドキュメントを Read で確認
 2. ディレクトリ構造を `ls` で俯瞰（`src/`, `app/`, `lib/` 等のレイアウト）
-3. 主要な設定ファイル（ルーティング定義、DI設定、composer.json 等）があれば確認
+3. 主要な設定ファイル（ルーティング定義、DI設定、composer.json / package.json 等）があれば確認
 4. アーキテクチャパターン（MVC、レイヤードアーキテクチャ等）を推定
+5. **使用言語を特定**（PHP / JS / TS / 複数言語混在）
 
 **0-2. キーワード探索**
 
@@ -87,14 +110,13 @@ allowed-tools:
 ```bash
 cd "${REPO_PATH}"
 
-# 仕様変更から推定されるキーワードで検索
-# 例: 「実行順序」→ priority, order, sort, sequence 等
+# 言語に応じてグロブを切り替え
+# PHP の場合:
 rg --vimgrep "<キーワード1>" -g'*.php' . | head -n 30
-rg --vimgrep "<キーワード2>" -g'*.php' . | head -n 30
-
-# クラス名・インターフェース名が推定できる場合
-rg --vimgrep "class <推定クラス名>" -g'*.php' .
-rg --vimgrep "interface <推定インターフェース名>" -g'*.php' .
+# JS/TS の場合:
+rg --vimgrep "<キーワード1>" -g'*.{ts,tsx,js,jsx}' . | head -n 30
+# 複数言語の場合は両方検索:
+rg --vimgrep "<キーワード1>" -g'*.{php,ts,tsx,js,jsx}' . | head -n 30
 ```
 
 探索のコツ:
@@ -133,9 +155,9 @@ rg --vimgrep "interface <推定インターフェース名>" -g'*.php' .
 仕様変更: <ユーザーのリクエスト要約>
 
 起点候補:
-1. <クラス>::<メソッド> (<file>:<line>)
+1. <クラス>::<メソッド> (<file>:<line>) [PHP]
    理由: <なぜこの箇所が起点になるか>
-2. <クラス>::<メソッド> (<file>:<line>)
+2. <関数名> (<file>:<line>) [TypeScript]
    理由: <理由>
 
 自信度: 高/中/低
@@ -167,12 +189,15 @@ STEP 0 で特定した起点の `rgline` は STEP 1 の形式（`file:line:col:t
 
 `rg --vimgrep` を使って対象シンボルを検索し、定義箇所を特定します。
 
-**パスの整合性が重要**: `rg` の実行場所と config.json の `root` が一致しないと、phprefs-walk がファイルを二重パスで解決して失敗します。以下の方法で rg を実行してください:
+**パスの整合性が重要**: `rg` の実行場所と config.json の `root` が一致しないと、lsprefs-walk がファイルを二重パスで解決して失敗します。以下の方法で rg を実行してください:
 
 ```bash
 # 方法B（推奨）: REPO_PATH 内から実行
 cd "${REPO_PATH}"
+# PHP の場合:
 rg --vimgrep "<シンボル名>" -g'*.php' . | head -n 20
+# JS/TS の場合:
+rg --vimgrep "<シンボル名>" -g'*.{ts,tsx,js,jsx}' . | head -n 20
 # → rgline のパスは REPO_PATH からの相対パス（例: ./src/Foo.php:42:10:...）
 # → config.json の root = REPO_PATH の絶対パス
 ```
@@ -181,14 +206,11 @@ rg --vimgrep "<シンボル名>" -g'*.php' . | head -n 20
 # 方法A: AI_TOOLS_DIR から実行し、REPO_PATH を検索対象に指定
 cd "${AI_TOOLS_DIR}"
 rg --vimgrep "<シンボル名>" -g'*.php' "${REPO_PATH}" | head -n 20
-# → rgline のパスは AI_TOOLS_DIR からの相対パス（例: ./repos/MyProject/src/Foo.php:42:10:...）
-# → config.json の root もそれに合わせる（後述 STEP 3）
-# ⚠️ 注意: 方法Aは config.json の root と phprefs デーモンの root の整合が取りにくく、
-#    パスの二重化（root/repos/MyProject/repos/MyProject/...）を引き起こしやすい。
-#    方法B を使い、config.json の root に REPO_PATH の絶対パスを設定するのが最も安全。
+# ⚠️ 注意: 方法Aは config.json の root と lsprefs デーモンの root の整合が取りにくく、
+#    パスの二重化を引き起こしやすい。方法B を推奨。
 ```
 
-検索結果から、**そのシンボルの定義箇所**（`function` / `public function` / `interface` の宣言行）を1つ選びます。
+検索結果から、**そのシンボルの定義箇所**（`function` / `public function` / `interface` / `export function` / `export const` の宣言行）を1つ選びます。
 
 選択基準:
 - `class` や `interface` 内の宣言行を優先
@@ -197,15 +219,29 @@ rg --vimgrep "<シンボル名>" -g'*.php' "${REPO_PATH}" | head -n 20
 
 選んだ行を `RGLINE` 変数として記録します。形式: `file:line:col:text`
 
+**1-2a. 言語自動判定の実行**
+
+起点が確定したら、ファイルの拡張子から LSP サーバーを決定します:
+
+```
+起点ファイル: ./src/Foo.php     → LSP_SERVER="intelephense --stdio"
+起点ファイル: ./src/bar.ts      → LSP_SERVER="typescript-language-server --stdio"
+起点ファイル: ./src/baz.jsx     → LSP_SERVER="typescript-language-server --stdio"
+```
+
+この `LSP_SERVER` を STEP 2 以降で使用します。
+
 **1-2b. 複数起点の場合**
 
 調査対象が複数のシンボルにまたがる場合（例: 関連する複数メソッドの一括調査、インターフェース+別クラスの組み合わせ等）:
 1. 各起点ごとに `RGLINE_1`, `RGLINE_2`, ... として記録する
 2. 各起点に対応する出力ファイル名を決める（例: `evidence-origin1.tsv`, `evidence-origin2.tsv`）
 3. STEP 3〜4 を各起点ごとに繰り返し実行する
-4. STEP 4.5 で `phprefs-walk merge` を使って統合する
+4. STEP 4.5 で `lsprefs-walk merge` を使って統合する
 
-**⚠️ カラム位置の重要な注意**: `rg --vimgrep` の col はマッチ開始位置（通常 `public` や `function` キーワード）を指す。しかし LSP の definition 解決にはカーソルが**シンボル名の上**にある必要がある。rgline の col がシンボル名を指していない場合、`phprefs def` が `ambiguous definition: 0 candidates` を返す。
+**注意**: 複数起点が**異なる言語**の場合（例: PHP 起点 + TS 起点）、各起点ごとに適切な `LSP_SERVER` を使い分ける必要があります。STEP 2〜4 を起点ごとに異なる `--server` で実行してください。
+
+**⚠️ カラム位置の重要な注意**: `rg --vimgrep` の col はマッチ開始位置（通常 `public` や `function` キーワード）を指す。しかし LSP の definition 解決にはカーソルが**シンボル名の上**にある必要がある。rgline の col がシンボル名を指していない場合、`lsprefs def` が `ambiguous definition: 0 candidates` を返す。
 
 修正方法: rg 出力の col をシンボル名の開始位置に書き換える。
 ```
@@ -217,11 +253,11 @@ rg --vimgrep "<シンボル名>" -g'*.php' "${REPO_PATH}" | head -n 20
 
 **1-3. インターフェースメソッドの場合の補完**
 
-起点がインターフェースメソッドの場合、LSP の `textDocument/references` は**ポリモーフィックな呼び出し箇所**のみを返し、**具象クラスの実装定義**は含まれない。このため phprefs-walk の結果だけでは網羅性が不足する。
+起点がインターフェースメソッド（PHP の `interface` / TypeScript の `interface`）の場合、LSP の `textDocument/references` は**ポリモーフィックな呼び出し箇所**のみを返し、**具象クラスの実装定義**は含まれない。このため lsprefs-walk の結果だけでは網羅性が不足する。
 
 **推奨: `--resolve-implementations` フラグを使用する**
 
-STEP 4 で phprefs-walk を実行する際に `--resolve-implementations` フラグを追加してください。このフラグを有効にすると、LSP の `textDocument/implementation` を使って具象実装を自動検出し、各実装を追加の BFS 起点として投入します。実装ノードには `note` に `resolved-impl` マーカーが付与されます。
+STEP 4 で lsprefs-walk を実行する際に `--resolve-implementations` フラグを追加してください。このフラグを有効にすると、LSP の `textDocument/implementation` を使って具象実装を自動検出し、各実装を追加の BFS 起点として投入します。実装ノードには `note` に `resolved-impl` マーカーが付与されます。
 
 設定方法:
 - CLI 引数: `--resolve-implementations`
@@ -229,32 +265,32 @@ STEP 4 で phprefs-walk を実行する際に `--resolve-implementations` フラ
 
 **フォールバック: 手動での補完**
 
-`--resolve-implementations` が期待通り動作しない場合（Intelephense が textDocument/implementation を返さない等）は、以下の手動手順を実行してください:
-1. `rg --vimgrep "function <メソッド名>" -g'*.php' .` で具象実装の一覧を取得
-2. 実装数が少ない場合（〜10件）: 主要な実装それぞれを起点として追加の phprefs-walk を実行
+`--resolve-implementations` が期待通り動作しない場合は、以下の手動手順を実行してください:
+1. `rg --vimgrep "function <メソッド名>" -g'*.php' .`（または `-g'*.{ts,tsx}'`）で具象実装の一覧を取得
+2. 実装数が少ない場合（〜10件）: 主要な実装それぞれを起点として追加の lsprefs-walk を実行
 3. 実装数が多い場合（10件超）: summary.md に「N件の具象実装が存在し、signature 変更時は全て修正が必要」と記載し、一覧をリストアップ
-4. 呼び出し箇所の追跡は interface 起点の phprefs-walk で十分（ポリモーフィック呼び出しが追跡される）
+4. 呼び出し箇所の追跡は interface 起点の lsprefs-walk で十分（ポリモーフィック呼び出しが追跡される）
 
 記録する際に、rg の実行場所（方法B or A）も覚えておいてください。STEP 3 のパス設定に必要です。
 
 ---
 
-### STEP 2: phprefs デーモンの準備
+### STEP 2: lsprefs デーモンの準備
 
-`phprefs-walk` は内部で `phprefs` デーモンに接続して refs/def を取得します。デーモンが起動していることを確認し、未起動なら起動します。
+`lsprefs-walk` は内部で `lsprefs` デーモンに接続して refs/def を取得します。デーモンが起動していることを確認し、未起動なら起動します。
 
 **`--root` は config.json の `root` と同じ値を指定してください。** パスが異なるとファイル解決に失敗します。
+
+**`--server` には STEP 1-2a で決定した LSP サーバーコマンドを指定してください。**
 
 ```bash
 cd "${AI_TOOLS_DIR}"
 
-# 方法A（STEP 1で方法Aを使った場合）:
-./bin/phprefs start --root "${REPO_PATH}"
-# ※ REPO_PATH は AI_TOOLS_DIR からの相対パスでも絶対パスでも可
+# PHP の場合:
+./bin/lsprefs start --root "$(cd "${REPO_PATH}" && pwd)" --server "intelephense --stdio"
 
-# 方法B（STEP 1で方法Bを使った場合）:
-./bin/phprefs start --root "$(cd "${REPO_PATH}" && pwd)"
-# ※ 絶対パスに解決して渡す
+# JS/TS の場合:
+./bin/lsprefs start --root "$(cd "${REPO_PATH}" && pwd)" --server "typescript-language-server --stdio"
 ```
 
 - `already running ...` と表示されたら OK（既に起動済み）
@@ -265,7 +301,7 @@ cd "${AI_TOOLS_DIR}"
 
 ### STEP 3: config.json の動的生成
 
-`phprefs-walk` 用の設定ファイルを一時ファイルとして生成します。
+`lsprefs-walk` 用の設定ファイルを一時ファイルとして生成します。
 
 Write ツールで以下の JSON を生成してください。
 **全てのパスは絶対パスで記述することを推奨します**（相対パス起因のファイル解決失敗を防ぐため）。
@@ -273,7 +309,7 @@ Write ツールで以下の JSON を生成してください。
 ```json
 {
   "root": "<REPO_PATH の絶対パス>",
-  "phprefs": "<AI_TOOLS_DIR の絶対パス>/bin/phprefs",
+  "lsprefs": "<AI_TOOLS_DIR の絶対パス>/bin/lsprefs",
   "state_dir": ".cache",
   "out": "<OUT_DIR の絶対パス>/evidence.tsv",
   "timeout": "30s",
@@ -281,12 +317,14 @@ Write ツールで以下の JSON を生成してください。
   "max_nodes": <MAX_NODES>,
   "max_refs_per_node": 300,
   "exclude": [<EXCLUDEパターンの配列>],
-  "intelephense": "<INTELEPHENSE の絶対パス>",
+  "server": "<LSP_SERVER コマンド>",
   "resolve_implementations": false
 }
 ```
 
 ファイルパス: `${OUT_DIR}/impact-analysis-config.json`
+
+**`server` フィールド**: STEP 1-2a で決定した LSP サーバーコマンドを設定します。`--server` CLI 引数でオーバーライドも可能です。
 
 **複数起点の場合**: 起点ごとに `out` パスを別名にした config.json を生成します。
 
@@ -298,26 +336,34 @@ Write ツールで以下の JSON を生成してください。
 { ..., "out": "${OUT_DIR}/evidence-origin2.tsv" }
 ```
 
-`root`, `phprefs`, `intelephense` 等は共通でよい。`out` のみ起点ごとに異なるパスを設定してください。
+**異なる言語の起点がある場合**: 起点ごとに `server` も変更してください。
+
+```json
+// PHP 起点用:
+{ ..., "server": "intelephense --stdio", "out": "${OUT_DIR}/evidence-php.tsv" }
+
+// JS/TS 起点用:
+{ ..., "server": "typescript-language-server --stdio", "out": "${OUT_DIR}/evidence-ts.tsv" }
+```
 
 **パス解決の注意**:
-- `root`: **STEP 2 の `phprefs start --root` と同じ値にすること**。STEP 1 で rg を `AI_TOOLS_DIR` から実行した場合は `REPO_PATH` の相対パス（例: `./repos/MyProject`）でも可。最も安全なのは絶対パス
-- `phprefs`: 絶対パス推奨（例: `/Users/xxx/projects/ai-tools/bin/phprefs`）
+- `root`: **STEP 2 の `lsprefs start --root` と同じ値にすること**。最も安全なのは絶対パス
+- `lsprefs`: 絶対パス推奨（例: `/Users/xxx/projects/ai-tools/bin/lsprefs`）
 - `out`: 絶対パス推奨
-- `intelephense`: PATH に入っていれば `"intelephense"` で可。nodenv 環境では `nodenv which intelephense` の結果を使用
+- `server`: LSP サーバーコマンド。PATH に入っていれば短縮名で可
 
 ---
 
-### STEP 4: phprefs-walk の実行
+### STEP 4: lsprefs-walk の実行
 
 生成した config.json と起点 rgline を使って BFS 探索を実行します。
 
 ```bash
 cd "${AI_TOOLS_DIR}"
-./bin/phprefs-walk run \
+./bin/lsprefs-walk run \
   --config "${OUT_DIR}/impact-analysis-config.json" \
   --rgline "${RGLINE}" \
-  --intelephense "$(which intelephense)" \
+  --server "${LSP_SERVER}" \
   2>&1
 ```
 
@@ -325,31 +371,31 @@ cd "${AI_TOOLS_DIR}"
 
 ```bash
 cd "${AI_TOOLS_DIR}"
-./bin/phprefs-walk run \
+./bin/lsprefs-walk run \
   --config "${OUT_DIR}/impact-analysis-config.json" \
   --rgline "${RGLINE}" \
-  --intelephense "$(which intelephense)" \
+  --server "${LSP_SERVER}" \
   --resolve-implementations \
   2>&1
 ```
 
 **注意**: `--rgline` に渡すパスは STEP 1 で rg が出力したそのままの値を使ってください。config.json の `root` と整合していれば正しく動作します。stderr に `wrote <path>` と表示されれば成功です。
 
-**複数起点の場合**: 各起点ごとに phprefs-walk run を実行します。
+**複数起点の場合**: 各起点ごとに lsprefs-walk run を実行します。
 
 ```bash
-# 起点1
-./bin/phprefs-walk run \
+# 起点1（例: PHP）
+./bin/lsprefs-walk run \
   --config "${OUT_DIR}/config-origin1.json" \
   --rgline "${RGLINE_1}" \
-  --intelephense "$(which intelephense)" \
+  --server "intelephense --stdio" \
   2>&1
 
-# 起点2
-./bin/phprefs-walk run \
+# 起点2（例: TypeScript）
+./bin/lsprefs-walk run \
   --config "${OUT_DIR}/config-origin2.json" \
   --rgline "${RGLINE_2}" \
-  --intelephense "$(which intelephense)" \
+  --server "typescript-language-server --stdio" \
   2>&1
 ```
 
@@ -364,9 +410,9 @@ cd "${AI_TOOLS_DIR}"
 4. `status=truncated` の行がある場合、`max_nodes` や `max_depth` の引き上げを検討
 
 エラーが見つかった場合:
-- `phprefs def failed` → 起点の rgline が不正。STEP 1 に戻り別の起点を選ぶ
+- `lsprefs def failed` → 起点の rgline が不正。STEP 1 に戻り別の起点を選ぶ
 - `truncated` → パラメータを引き上げて STEP 3 から再実行（ユーザーに確認）
-- LSP 関連エラー → phprefs デーモンの再起動を試みる
+- LSP 関連エラー → lsprefs デーモンの再起動を試みる
 
 ---
 
@@ -374,11 +420,11 @@ cd "${AI_TOOLS_DIR}"
 
 > **このステップは起点が複数ある場合のみ実行します。起点が1つの場合はスキップしてください。**
 
-STEP 4 で各起点ごとに生成された個別 evidence TSV を `phprefs-walk merge` で統合します。
+STEP 4 で各起点ごとに生成された個別 evidence TSV を `lsprefs-walk merge` で統合します。
 
 ```bash
 cd "${AI_TOOLS_DIR}"
-./bin/phprefs-walk merge \
+./bin/lsprefs-walk merge \
   --out "${OUT_DIR}/evidence.tsv" \
   "${OUT_DIR}/evidence-origin1.tsv" \
   "${OUT_DIR}/evidence-origin2.tsv"
@@ -436,7 +482,7 @@ evidence.tsv は BFS 探索ログです。各カラムの意味:
 
 **kind の読み方**:
 - `NODE`: BFS キューに入った関数/メソッドの定義位置
-- `REF`: そのノードが参照されている箇所（= `phprefs refs` の結果）
+- `REF`: そのノードが参照されている箇所（= `lsprefs refs` の結果）
 - `DEF`: REF箇所を含む呼び出し元関数（enclosing callable）。**LSP の definition ではない**
 
 **status の読み方**:
@@ -468,6 +514,8 @@ evidence.tsv は BFS 探索ログです。各カラムの意味:
 - 調査パターン: <コード起点（パターンA） or 仕様起点（パターンB）>
 - 調査日時: <YYYY-MM-DD HH:MM>
 - 起点: <起点シンボル名>（`<file>:<line>`）
+- 言語: <PHP / JavaScript / TypeScript>
+- LSP サーバー: <使用した LSP サーバーコマンド>
 - 探索パラメータ: max_depth=<N>, max_nodes=<N>
 
 ## 第1段階: 仕様→コード箇所マッピング（仕様起点の場合のみ）
@@ -494,9 +542,9 @@ evidence.tsv は BFS 探索ログです。各カラムの意味:
 <候補からどのように起点を絞り込んだか。読んだファイル、判断の根拠を記載>
 
 **特定した起点**:
-| # | シンボル | ファイル | 行 | 選定理由 |
-|---|---------|---------|-----|---------|
-| 1 | <Class::method> | `<file>` | <line> | <なぜこの箇所か> |
+| # | シンボル | ファイル | 行 | 言語 | 選定理由 |
+|---|---------|---------|-----|------|---------|
+| 1 | <Class::method> | `<file>` | <line> | <PHP/TS/JS> | <なぜこの箇所か> |
 
 **自信度**: <高/中/低>
 **自信度の根拠**: <なぜその自信度か>
@@ -543,15 +591,15 @@ evidence.tsv は BFS 探索ログです。各カラムの意味:
 ```markdown
 ## 起点一覧
 
-| # | origin_id | シンボル名 | ファイル | 行 | ノード数 |
-|---|-----------|-----------|---------|-----|---------|
-| 1 | O1 | <シンボル名1> | `<file1>` | <line1> | <N> |
-| 2 | O2 | <シンボル名2> | `<file2>` | <line2> | <N> |
+| # | origin_id | シンボル名 | ファイル | 行 | 言語 | ノード数 |
+|---|-----------|-----------|---------|-----|------|---------|
+| 1 | O1 | <シンボル名1> | `<file1>` | <line1> | <PHP/TS/JS> | <N> |
+| 2 | O2 | <シンボル名2> | `<file2>` | <line2> | <PHP/TS/JS> | <N> |
 
 ## 起点間の影響比較
 
-| 観点 | O1 (<シンボル名1>) | O2 (<シンボル名2>) |
-|------|-------------------|-------------------|
+| 観点 | O1 (<シンボル名1>) [<言語>] | O2 (<シンボル名2>) [<言語>] |
+|------|---------------------------|---------------------------|
 | 影響ノード数 | <N> | <N> |
 | 最大到達深度 | <N> | <N> |
 | 影響ファイル数 | <N> | <N> |
@@ -579,17 +627,130 @@ evidence.tsv は BFS 探索ログです。各カラムの意味:
 
 ---
 
+## 言語間追跡パターン（パターンC: クロスランゲージ）
+
+サーバサイド（PHP）→ フロントサイド（JS/TS）、またはその逆方向に影響が波及する場合のパターンです。
+
+### 判定基準
+
+以下の場合にパターンCを適用します:
+- 仕様変更が API のレスポンス形式やエンドポイントに影響する
+- サーバサイドの関数変更がフロントサイドの呼び出しに影響する
+- 共有型定義や API スキーマの変更
+
+### 実行手順
+
+**C-1. 第1言語側の影響追跡**
+
+まず、変更の起点がある言語側で通常の影響追跡（STEP 1〜4）を実行します。
+
+```bash
+# 例: PHP 側の変更が起点
+cd "${AI_TOOLS_DIR}"
+./bin/lsprefs-walk run \
+  --config "${OUT_DIR}/config-php.json" \
+  --rgline "${RGLINE_PHP}" \
+  --server "intelephense --stdio" \
+  2>&1
+```
+
+**C-2. 橋渡しポイントの特定（AI 判断）**
+
+第1言語側の evidence.tsv を分析し、言語間の橋渡しポイントを特定します。これは AI の判断で行います。
+
+**橋渡しポイントの例**:
+- API エンドポイントの定義（ルーティング定義、コントローラーのアクション）
+- API レスポンスの型定義 / JSON 構造
+- 共有定数 / 設定値
+- WebSocket イベント名
+- GraphQL スキーマ定義
+
+**特定方法**:
+1. evidence.tsv の影響ノードから、API 関連のクラス/関数を探す
+2. ルーティング定義ファイルから該当エンドポイントの URL パスを取得
+3. レスポンス構造が変わる場合、変更されるフィールド名を記録
+
+**C-3. 第2言語側での検索**
+
+橋渡しポイントをキーワードとして、第2言語側で rg 検索を実行します。
+
+```bash
+cd "${REPO_PATH}"
+
+# エンドポイント URL で検索
+rg --vimgrep "/api/users" -g'*.{ts,tsx,js,jsx}' . | head -n 20
+
+# レスポンスフィールド名で検索
+rg --vimgrep "fieldName" -g'*.{ts,tsx,js,jsx}' . | head -n 20
+
+# API クライアント関数で検索
+rg --vimgrep "fetchUsers\|getUsers" -g'*.{ts,tsx,js,jsx}' . | head -n 20
+```
+
+**C-4. 第2言語側の影響追跡**
+
+見つかった JS/TS ファイルから起点を選定し、第2言語側でも lsprefs-walk を実行します。
+
+```bash
+cd "${AI_TOOLS_DIR}"
+./bin/lsprefs-walk run \
+  --config "${OUT_DIR}/config-ts.json" \
+  --rgline "${RGLINE_TS}" \
+  --server "typescript-language-server --stdio" \
+  2>&1
+```
+
+**C-5. 統合**
+
+両言語の evidence.tsv を merge で統合します。
+
+```bash
+./bin/lsprefs-walk merge \
+  --out "${OUT_DIR}/evidence.tsv" \
+  "${OUT_DIR}/evidence-php.tsv" \
+  "${OUT_DIR}/evidence-ts.tsv"
+```
+
+`origin_id` で言語を区別します（例: O1 = PHP 側、O2 = JS/TS 側）。
+
+**C-6. summary.md への追加セクション**
+
+言語間追跡を行った場合、summary.md に以下を追加してください:
+
+```markdown
+## 言語間追跡
+
+### 橋渡しポイント
+| # | 種別 | 第1言語側 | 第2言語側 | 詳細 |
+|---|------|----------|----------|------|
+| 1 | API エンドポイント | `<PHP controller>` | `<TS fetch call>` | `GET /api/users` |
+| 2 | レスポンスフィールド | `<PHP response>` | `<TS interface>` | `user.email` フィールド |
+
+### 言語別影響サマリ
+| 言語 | origin_id | 影響ノード数 | 影響ファイル数 |
+|------|-----------|------------|-------------|
+| PHP | O1 | <N> | <N> |
+| TypeScript | O2 | <N> | <N> |
+
+### 注意事項
+- 言語間の橋渡し（API エンドポイント、レスポンス構造等）は AI の推論に基づくため、rg 検索で漏れがある可能性がある
+- 動的に生成される URL パスやフィールド名は静的検索では発見できない
+- API ドキュメント（OpenAPI / Swagger 等）がある場合はそちらも参照することを推奨
+```
+
+---
+
 ## エラー時の対処
 
 | エラー | 原因 | 対処 |
 |--------|------|------|
-| `phprefs def failed` | 起点の rgline が不正、またはデーモン未起動 | STEP 1 で別の起点を選択、または STEP 2 でデーモン再起動 |
+| `lsprefs def failed` | 起点の rgline が不正、またはデーモン未起動 | STEP 1 で別の起点を選択、または STEP 2 でデーモン再起動 |
 | `ambiguous definition: N candidates` | 定義が複数見つかった | rg 結果から定義箇所を絞り込んで再試行 |
 | `ambiguous definition: 0 candidates` | rgline の col がシンボル名を指していない | STEP 1 の「カラム位置の注意」に従い、col をシンボル名の開始位置に修正 |
-| `connect to daemon socket ... (is the daemon running?)` | phprefs デーモンが停止 | STEP 2 で `phprefs start` を実行 |
+| `connect to daemon socket ... (is the daemon running?)` | lsprefs デーモンが停止 | STEP 2 で `lsprefs start` を実行 |
 | `status=truncated` が多数 | 影響範囲が設定上限を超えた | `max_depth` / `max_nodes` を引き上げて再実行 |
 | `status=error` | LSP エラー等 | エラー内容を確認し、summary.md に注意事項として記載 |
 | `warning: resolve-implementations: textDocument/implementation` | LSP が implementation を未サポート | STEP 1-3 のフォールバック（手動 rg）を実行。BFS は通常通り続行される |
 | `warning: resolve-implementations: ...` | 実装解決に失敗（タイムアウト等） | stderr の警告を確認。BFS は通常通り続行されるが、具象実装が不足する可能性あり |
 | `merge requires at least 2 input files` | merge に入力ファイルが不足 | 2つ以上の evidence TSV を引数に指定 |
-| `expected 13 header columns, got N` | 入力 TSV のフォーマットが不正 | phprefs-walk run で生成された正しい TSV を使用しているか確認 |
+| `expected 13 header columns, got N` | 入力 TSV のフォーマットが不正 | lsprefs-walk run で生成された正しい TSV を使用しているか確認 |

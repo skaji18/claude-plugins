@@ -14,9 +14,10 @@ check_binary() {
 
 echo "=== impact-analysis plugin: dependency check ==="
 
-check_binary "phprefs"
-check_binary "phprefs-walk"
+check_binary "lsprefs"
+check_binary "lsprefs-walk"
 check_binary "intelephense"
+check_binary "typescript-language-server"
 check_binary "rg"
 
 if [ "$errors" -gt 0 ]; then

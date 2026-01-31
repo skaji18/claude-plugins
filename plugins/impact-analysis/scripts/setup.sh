@@ -3,24 +3,34 @@ set -euo pipefail
 
 echo "=== impact-analysis plugin: setup ==="
 
-# Install phprefs
-echo "[1/3] Installing phprefs..."
-go install github.com/skaji18/devtools/phprefs@latest
-echo "  phprefs installed: $(which phprefs)"
+# Install lsprefs
+echo "[1/4] Installing lsprefs..."
+go install github.com/skaji18/devtools/lsprefs@latest
+echo "  lsprefs installed: $(which lsprefs)"
 
-# Install phprefs-walk
-echo "[2/3] Installing phprefs-walk..."
-go install github.com/skaji18/devtools/phprefs-walk@latest
-echo "  phprefs-walk installed: $(which phprefs-walk)"
+# Install lsprefs-walk
+echo "[2/4] Installing lsprefs-walk..."
+go install github.com/skaji18/devtools/lsprefs-walk@latest
+echo "  lsprefs-walk installed: $(which lsprefs-walk)"
 
-# Install intelephense (only if not already installed)
-echo "[3/3] Checking intelephense..."
+# Install intelephense (PHP LSP, only if not already installed)
+echo "[3/4] Checking intelephense..."
 if command -v intelephense >/dev/null 2>&1; then
   echo "  intelephense already installed: $(which intelephense)"
 else
   echo "  Installing intelephense..."
   npm install -g intelephense
   echo "  intelephense installed: $(which intelephense)"
+fi
+
+# Install typescript-language-server (JS/TS LSP, only if not already installed)
+echo "[4/4] Checking typescript-language-server..."
+if command -v typescript-language-server >/dev/null 2>&1; then
+  echo "  typescript-language-server already installed: $(which typescript-language-server)"
+else
+  echo "  Installing typescript-language-server and typescript..."
+  npm install -g typescript-language-server typescript
+  echo "  typescript-language-server installed: $(which typescript-language-server)"
 fi
 
 echo ""
