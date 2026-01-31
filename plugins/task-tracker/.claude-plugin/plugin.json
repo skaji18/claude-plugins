@@ -1,0 +1,37 @@
+{
+  "name": "task-tracker",
+  "version": "1.0.0",
+  "description": "業務タスク（レビュー/確認/調査/設計実装）を Obsidian 互換 Markdown で管理する Claude Code プラグイン。チャット依頼を貼るだけでタスク登録・完了記録・一覧表示ができる。",
+  "author": "skaji18",
+  "license": "MIT",
+  "skills": [
+    {
+      "name": "task-init",
+      "path": "../skills/task-init/SKILL.md"
+    },
+    {
+      "name": "task-add",
+      "path": "../skills/task-add/SKILL.md"
+    },
+    {
+      "name": "task-done",
+      "path": "../skills/task-done/SKILL.md"
+    },
+    {
+      "name": "task-list",
+      "path": "../skills/task-list/SKILL.md"
+    },
+    {
+      "name": "task-delete",
+      "path": "../skills/task-delete/SKILL.md"
+    }
+  ],
+  "hooks": {
+    "path": "../hooks/hooks.json"
+  },
+  "scripts": {
+    "setup": "../scripts/setup.sh",
+    "validate": "../scripts/validate.sh"
+  },
+  "dependencies": {}
+}
