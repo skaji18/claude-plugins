@@ -1,13 +1,7 @@
 ---
-name: list
-version: "1.0.0"
 description: タスク一覧を表示する
-user-invocable: true
-allowed-tools:
-  - Read
-  - Glob
-  - Bash(date*)
-  - Bash(mkdir*)
+argument-hint: "[--all | --done]"
+allowed-tools: [Read, Write, Glob, Grep, Bash]
 ---
 
 # /list: タスク一覧表示スキル
@@ -17,13 +11,13 @@ allowed-tools:
 
 ## 引数の解析
 
-ユーザーの入力からオプションを判定します。
+ユーザーの入力は `$ARGUMENTS` として渡されます。以下のオプションを判定してください。
 
 | 入力パターン | 動作 |
 |-------------|------|
-| `/list` | inbox/ のタスクのみ表示（デフォルト） |
-| `/list --all` | inbox/ と done/ の両方を表示 |
-| `/list --done` | done/ のタスクのみ表示 |
+| （空 or なし） | inbox/ のタスクのみ表示（デフォルト） |
+| `--all` | inbox/ と done/ の両方を表示 |
+| `--done` | done/ のタスクのみ表示 |
 
 引数が上記以外の場合は、デフォルト動作（inbox/ のみ）として扱います。
 
