@@ -1,9 +1,15 @@
 {
-  "hooks": [
-    {
-      "event": "SessionStart",
-      "command": "../scripts/validate.sh",
-      "description": "セッション開始時に設定ファイルとディレクトリの存在をチェックする"
-    }
-  ]
+  "description": "task-tracker plugin hooks",
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "${CLAUDE_PLUGIN_ROOT}/scripts/validate.sh"
+          }
+        ]
+      }
+    ]
+  }
 }

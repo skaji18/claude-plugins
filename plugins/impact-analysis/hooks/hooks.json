@@ -1,9 +1,15 @@
 {
-  "hooks": [
-    {
-      "event": "SessionStart",
-      "command": "../scripts/validate.sh",
-      "description": "セッション開始時に必要なバイナリの存在をチェックする"
-    }
-  ]
+  "description": "impact-analysis plugin hooks",
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "${CLAUDE_PLUGIN_ROOT}/scripts/validate.sh"
+          }
+        ]
+      }
+    ]
+  }
 }
