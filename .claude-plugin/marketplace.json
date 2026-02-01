@@ -1,0 +1,33 @@
+{
+  "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
+  "name": "skaji18-plugins",
+  "description": "Claude Code plugins collection by skaji18",
+  "owner": {
+    "name": "skaji18",
+    "email": "skaji18@users.noreply.github.com"
+  },
+  "plugins": [
+    {
+      "name": "impact-analysis",
+      "description": "コードの影響範囲を調査するスキル（PHP / JS / TS 対応）",
+      "version": "1.1.0",
+      "author": {
+        "name": "skaji18",
+        "email": "skaji18@users.noreply.github.com"
+      },
+      "source": "./plugins/impact-analysis",
+      "category": "development"
+    },
+    {
+      "name": "task-tracker",
+      "description": "業務タスクを Obsidian 互換 Markdown で管理するプラグイン",
+      "version": "1.0.0",
+      "author": {
+        "name": "skaji18",
+        "email": "skaji18@users.noreply.github.com"
+      },
+      "source": "./plugins/task-tracker",
+      "category": "productivity"
+    }
+  ]
+}

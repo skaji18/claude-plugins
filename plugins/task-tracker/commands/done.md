@@ -1,16 +1,7 @@
 ---
-name: done
-version: "1.0.0"
 description: タスクを完了にする。返信文を貼り付け → タスク特定 → done/移動 + デイリーログ追記
-user-invocable: true
-allowed-tools:
-  - Read
-  - Write
-  - Edit
-  - Glob
-  - Bash(date*)
-  - Bash(mv*)
-  - Bash(mkdir*)
+argument-hint: "[#task-id] <completion-note>"
+allowed-tools: [Read, Write, Glob, Grep, Bash]
 ---
 
 # /done: タスク完了スキル
@@ -48,7 +39,7 @@ DAILY_DIR   = {BASE_DIR}/daily
 
 ## STEP 2: 入力のパース
 
-ユーザーの入力を以下の3パターンで解釈します。
+ユーザーの入力は `$ARGUMENTS` として渡されます。以下の3パターンで解釈します。
 
 ### パターン1: 囲い + URL あり
 
@@ -92,7 +83,7 @@ LGTM, 2点だけ軽微な指摘。
 
 ### パース手順
 
-1. 入力全体から `/done` プレフィックスを除去
+1. `$ARGUMENTS` から `/done` プレフィックスを除去（含まれている場合）
 2. 4バッククォート（`````）の囲いがあるか判定
    - **あり** → 囲い外と囲い内を分離
      - 囲い外に `https://` で始まる行があれば **chat URL** として記録

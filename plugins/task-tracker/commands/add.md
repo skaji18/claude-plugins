@@ -1,16 +1,7 @@
 ---
-name: task-add
-version: "1.0.0"
 description: チャット依頼やメモを貼り付けるだけでタスクを登録する。AI がメタデータを自動抽出し、Obsidian 互換 Markdown ファイルを生成する。
-user-invocable: true
-allowed-tools:
-  - Bash(uuidgen*)
-  - Bash(date*)
-  - Bash(mkdir*)
-  - Bash(cp*)
-  - Read
-  - Write
-  - Glob
+argument-hint: <task-description-or-chat-url>
+allowed-tools: [Read, Write, Glob, Grep, Bash]
 ---
 
 # task-add: タスク登録スキル
@@ -20,17 +11,17 @@ allowed-tools:
 
 ## 前提条件
 
-- `~/.task-tracker.json` が存在すること（存在しない場合は `/task-init` を案内）
+- `~/.task-tracker.json` が存在すること（存在しない場合は `/init` を案内）
 - Obsidian Vault のディレクトリ構造が作成済みであること
 
 ## 入力形式
 
-3パターンの入力を受け付けます。
+ユーザーの入力は `$ARGUMENTS` として渡されます。以下の3パターンの入力を受け付けます。
 
 ### パターン1: チャット依頼（chat URL + 本文あり）
 
 ````
-/task-add
+/add
 https://chat.google.com/room/xxx/thread/yyy
 
 ````
@@ -46,7 +37,7 @@ https://github.com/org/repo/pull/123
 ### パターン2: チャット依頼（本文のみ）
 
 ````
-/task-add
+/add
 ````
 田中です。添付の資料確認お願いします
 ````
@@ -58,7 +49,7 @@ https://github.com/org/repo/pull/123
 ### パターン3: 自由テキスト（囲いなし）
 
 ```
-/task-add
+/add
 会議で田中さんからAPI設計レビュー依頼された
 ```
 
@@ -77,7 +68,7 @@ https://github.com/org/repo/pull/123
 **設定ファイルが存在しない場合**:
 以下のメッセージを表示して終了します。
 ```
-設定ファイルが見つかりません。先に /task-init を実行してセットアップを行ってください。
+設定ファイルが見つかりません。先に /init を実行してセットアップを行ってください。
 ```
 
 **設定ファイルの内容**:
@@ -109,7 +100,7 @@ mkdir -p "<BASE_PATH>/attachments"
 
 ### STEP 3: 入力パース
 
-ユーザーの入力を解析し、以下を分離します:
+`$ARGUMENTS` を解析し、以下を分離します:
 
 | 入力パターン | 判定方法 | source | 本文 |
 |-------------|---------|--------|------|
@@ -347,9 +338,9 @@ Next:
 
 | エラー | 対処 |
 |--------|------|
-| `~/.task-tracker.json` が存在しない | `/task-init` の実行を案内して終了 |
-| `~/.task-tracker.json` の JSON パースエラー | 「設定ファイルが壊れています。/task-init で再作成してください。」と案内 |
-| `vault_path` が存在しない | 「Vault パスが見つかりません: <path>。/task-init で再設定してください。」と案内 |
+| `~/.task-tracker.json` が存在しない | `/init` の実行を案内して終了 |
+| `~/.task-tracker.json` の JSON パースエラー | 「設定ファイルが壊れています。/init で再作成してください。」と案内 |
+| `vault_path` が存在しない | 「Vault パスが見つかりません: <path>。/init で再設定してください。」と案内 |
 | `uuidgen` コマンドが使えない | `python3 -c "import uuid; print(str(uuid.uuid4())[:8])"` をフォールバックとして使用 |
 | 入力が空（テキストなし） | 「タスク内容を入力してください。」と案内 |
 | ファイル書き込み失敗 | 権限を確認するようユーザーに案内 |

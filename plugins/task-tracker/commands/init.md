@@ -1,14 +1,6 @@
 ---
-name: task-init
-version: "1.0.0"
 description: task-tracker の初期設定を対話的に行い、設定ファイルとディレクトリ構造を生成する
-user-invocable: true
-allowed-tools:
-  - Bash(mkdir*)
-  - Bash(ls*)
-  - Bash(test*)
-  - Read
-  - Write
+allowed-tools: [Read, Write, Glob, Grep, Bash]
 ---
 
 # task-init: task-tracker 初期セットアップ
@@ -159,7 +151,7 @@ task-tracker のセットアップが完了しました！
   attachments/  ... 添付ファイル
 
 次のステップ:
-  /task-add でタスクを登録してみましょう！
+  /add でタスクを登録してみましょう！
   チャットの依頼文をそのまま貼り付けるだけでOKです。
 ```
 
