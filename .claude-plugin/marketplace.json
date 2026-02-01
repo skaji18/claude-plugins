@@ -28,6 +28,17 @@
       },
       "source": "./plugins/task-tracker",
       "category": "productivity"
+    },
+    {
+      "name": "project-audit",
+      "description": "プロジェクトの構成・品質・DXを包括的に調査し、改善提案を優先度付きでレポートするスキル。外部ツール依存なし。",
+      "version": "1.0.0",
+      "author": {
+        "name": "skaji18",
+        "email": "skaji18@users.noreply.github.com"
+      },
+      "source": "./plugins/project-audit",
+      "category": "development"
     }
   ]
 }
