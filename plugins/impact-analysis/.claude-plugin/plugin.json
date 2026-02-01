@@ -1,24 +1,8 @@
 {
   "name": "impact-analysis",
-  "version": "1.1.0",
   "description": "コードの影響範囲を調査するスキル（PHP / JS / TS 対応）。lsprefs/lsprefs-walk を使ったBFS探索で、関数・メソッド変更時の影響を機械的に追跡し、evidence.tsv と summary.md を生成する。",
-  "author": "skaji18",
-  "license": "MIT",
-  "skills": [
-    {
-      "name": "impact-analysis",
-      "path": "../skills/impact-analysis/SKILL.md"
-    }
-  ],
-  "hooks": {
-    "path": "../hooks/hooks.json"
-  },
-  "scripts": {
-    "setup": "../scripts/setup.sh",
-    "validate": "../scripts/validate.sh"
-  },
-  "dependencies": {
-    "binaries": ["lsprefs", "lsprefs-walk", "intelephense", "typescript-language-server", "rg"],
-    "runtime": ["go", "node"]
+  "author": {
+    "name": "skaji18",
+    "email": "skaji18@users.noreply.github.com"
   }
 }
