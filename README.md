@@ -9,38 +9,45 @@ Claude Code plugins collection by skaji18.
 | Plugin | Description | Version |
 |--------|-------------|---------|
 | [impact-analysis](plugins/impact-analysis/) | Code impact analysis skill (PHP / JS / TS) | 1.1.0 |
+| [task-tracker](plugins/task-tracker/) | Obsidian-compatible task management plugin | 1.0.0 |
 
 ## Prerequisites
+
+- [Claude Code](https://claude.com/claude-code) CLI
+
+### impact-analysis
 
 - [Go](https://go.dev/dl/) 1.21+ (for lsprefs, lsprefs-walk)
 - [Node.js](https://nodejs.org/) 18+ (for intelephense, typescript-language-server)
 - [ripgrep](https://github.com/BurntSushi/ripgrep) (`rg`)
-- [Claude Code](https://claude.com/claude-code) CLI
+
+### task-tracker
+
+- [Obsidian](https://obsidian.md/) vault (local directory)
 
 ## Installation
 
-### 1. Run setup script
+### impact-analysis
 
 ```bash
+# Install dependencies
 bash plugins/impact-analysis/scripts/setup.sh
-```
 
-This installs the following tools:
-
-| Tool | Install method | Purpose |
-|------|---------------|---------|
-| `lsprefs` | `go install` | LSP-based reference/definition lookup daemon |
-| `lsprefs-walk` | `go install` | BFS-based impact analysis walker |
-| `intelephense` | `npm install -g` | PHP LSP server |
-| `typescript-language-server` | `npm install -g` | JS/TS LSP server |
-
-### 2. Verify installation
-
-```bash
+# Verify installation
 bash plugins/impact-analysis/scripts/validate.sh
 ```
 
-All checks should show `[OK]`. If any dependency is missing, run `setup.sh` again.
+### task-tracker
+
+```bash
+# Create config and directories
+bash plugins/task-tracker/scripts/setup.sh
+
+# Verify setup
+bash plugins/task-tracker/scripts/validate.sh
+```
+
+Alternatively, use the `/init` command in Claude Code for interactive setup.
 
 ## Plugin: impact-analysis
 
@@ -68,34 +75,36 @@ The LSP server is auto-detected from the entry point file extension.
 
 ### Usage
 
-Invoke the `/impact-analysis` skill in Claude Code:
-
 ```bash
-# Pattern A: Code origin — specify a function/method name
 /impact-analysis Investigate the impact of deleting the getSignature method
-
-# Pattern B: Spec origin — describe a feature change in natural language
 /impact-analysis What is the impact of changing the Fixer execution order logic?
-
-# Pattern C: Cross-language — trace impact across PHP and JS/TS
 /impact-analysis The /api/users endpoint response format is changing. Trace impact on both PHP and frontend TS.
 ```
 
-### Plugin Structure
+See [plugins/impact-analysis/README.md](plugins/impact-analysis/) for full documentation.
 
-```
-plugins/impact-analysis/
-├── .claude-plugin/
-│   └── plugin.json          # Plugin definition (name, version, dependencies)
-├── skills/
-│   └── impact-analysis/
-│       └── SKILL.md          # Skill prompt (STEP 0-6, all patterns)
-├── hooks/
-│   └── hooks.json            # SessionStart hook for dependency validation
-└── scripts/
-    ├── setup.sh              # Install all dependencies
-    └── validate.sh           # Check all dependencies exist
-```
+## Plugin: task-tracker
+
+Obsidian-compatible task management plugin. Captures work tasks from chat messages, tracks them as Markdown files, and manages completion with daily logs.
+
+### Features
+
+- **AI-powered capture**: Paste raw chat messages and the AI extracts metadata (requester, type, tags, deadline, URLs)
+- **Obsidian-native**: Tasks are plain Markdown files with YAML front matter, stored in your vault
+- **Folder-based status**: `inbox/` = active, `done/` = completed
+- **Daily log**: Automatic daily summary of completed tasks
+
+### Commands
+
+| Command | Purpose |
+|---------|---------|
+| `/init` | Interactive setup |
+| `/add` | Capture a new task |
+| `/done` | Mark a task as complete |
+| `/list` | Display task list |
+| `/delete` | Remove a task |
+
+See [plugins/task-tracker/README.md](plugins/task-tracker/) for full documentation.
 
 ## Contributing
 

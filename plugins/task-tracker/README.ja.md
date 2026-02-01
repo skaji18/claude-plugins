@@ -161,18 +161,13 @@ created: "2026-01-31T10:30:00"
 ```
 plugins/task-tracker/
 ├── .claude-plugin/
-│   └── plugin.json          # プラグインメタデータ
-├── skills/
-│   ├── task-add/
-│   │   └── SKILL.md          # /add コマンド
-│   ├── task-done/
-│   │   └── SKILL.md          # /done コマンド
-│   ├── task-list/
-│   │   └── SKILL.md          # /list コマンド
-│   ├── task-init/
-│   │   └── SKILL.md          # /init コマンド
-│   └── task-delete/
-│       └── SKILL.md          # /delete コマンド
+│   └── plugin.json          # プラグインメタデータ（名前、バージョン、作者）
+├── commands/
+│   ├── add.md               # /add コマンド
+│   ├── delete.md            # /delete コマンド
+│   ├── done.md              # /done コマンド
+│   ├── init.md              # /init コマンド
+│   └── list.md              # /list コマンド
 ├── hooks/
 │   └── hooks.json            # SessionStart フック（設定チェック）
 ├── scripts/

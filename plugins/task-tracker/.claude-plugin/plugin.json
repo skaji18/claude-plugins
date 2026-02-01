@@ -1,5 +1,6 @@
 {
   "name": "task-tracker",
+  "version": "1.0.0",
   "description": "業務タスク（レビュー/確認/調査/設計実装）を Obsidian 互換 Markdown で管理する Claude Code プラグイン。チャット依頼を貼るだけでタスク登録・完了記録・一覧表示ができる。",
   "author": {
     "name": "skaji18",

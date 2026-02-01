@@ -172,10 +172,9 @@ bash scripts/validate.sh
 ```
 plugins/impact-analysis/
 ├── .claude-plugin/
-│   └── plugin.json          # Plugin metadata (name, version, dependencies)
-├── skills/
-│   └── impact-analysis/
-│       └── SKILL.md          # Skill prompt (all patterns, STEP 0-6)
+│   └── plugin.json          # Plugin metadata (name, version, author)
+├── commands/
+│   └── impact-analysis.md   # Skill prompt (all patterns, STEP 0-6)
 ├── hooks/
 │   └── hooks.json            # SessionStart hook for dependency validation
 ├── scripts/
