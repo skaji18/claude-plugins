@@ -1,16 +1,6 @@
 ---
-name: impact-analysis
-version: "1.2.0"
 description: コードの影響範囲を調査するスキル（PHP / JS / TS 対応）
-user-invocable: true
-allowed-tools:
-  - Bash(lsprefs*)
-  - Bash(lsprefs-walk*)
-  - Bash(rg*)
-  - Read
-  - Grep
-  - Glob
-  - Write
+allowed-tools: [Bash(lsprefs*), Bash(lsprefs-walk*), Bash(rg*), Read, Grep, Glob, Write]
 ---
 
 # impact-analysis: コード影響調査スキル
@@ -19,6 +9,19 @@ allowed-tools:
 ユーザーの調査リクエスト（自然言語）を受け取り、既存ツール（`lsprefs-walk`, `lsprefs`, `rg`）を使って影響範囲を機械的に追跡し、**evidence.tsv**（証跡一覧）と **summary.md**（人間用レポート）を生成します。
 
 **対応言語**: PHP, JavaScript, TypeScript
+
+## ユーザー入力（$ARGUMENTS）
+
+ユーザーの入力は `$ARGUMENTS` として渡されます。以下のパターンを判定してください。
+
+| 入力パターン | 例 | 動作 |
+|-------------|-----|------|
+| シンボル名のみ | `getSignature` | パターンA（コード起点）として STEP 1 へ |
+| ファイルパス:シンボル名 | `src/Foo.php:getSignature` | パターンA（コード起点）として STEP 1 へ。ファイルパスをヒントに起点を特定 |
+| 自然言語の説明 | `Fixerの実行順序の決定ロジックを変更した場合の影響` | パターンB（仕様起点）として STEP 0 へ |
+| 空（引数なし） | （なし） | ユーザーに調査対象を質問する |
+
+`$ARGUMENTS` の内容は STEP 1 の「1-1. リクエストの解析」でパースされます。
 
 ## 前提条件
 
@@ -181,7 +184,7 @@ STEP 0 で特定した起点の `rgline` は STEP 1 の形式（`file:line:col:t
 
 **1-1. リクエストの解析**
 
-ユーザーが指定した内容を確認します:
+`$ARGUMENTS` からユーザーが指定した内容を確認します:
 - 調査対象のシンボル名（関数名、メソッド名、クラス名等）
 - 対象リポジトリのパス（`REPO_PATH`）
 - カスタム設定があれば取得
