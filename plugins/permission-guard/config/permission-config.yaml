@@ -1,0 +1,82 @@
+interpreters:
+  python3:
+    safe_flags:
+      - u
+      - B
+      - s
+      - S
+      - v
+      - b
+      - q
+      - O
+      - I
+      - E
+      - P
+      - R
+    dangerous_flags:
+      - c
+      - e
+      - m
+    dangerous_long_flags:
+      - --command
+      - --eval
+  bash:
+    safe_flags:
+      - n
+    dangerous_flags:
+      - c
+      - i
+    dangerous_long_flags:
+      - --init-file
+      - --rcfile
+  sh:
+    safe_flags: []
+    dangerous_flags:
+      - c
+      - i
+    dangerous_long_flags:
+      - --init-file
+      - --rcfile
+always_ask:
+  - curl
+  - wget
+  - ssh
+  - scp
+  - rsync
+  - nc
+  - sudo
+  - su
+  - eval
+  - exec
+  - xargs
+  - env
+  - nohup
+  - timeout
+  - busybox
+  - screen
+  - tmux
+  - script
+  - pip
+  - pip3
+  - npm
+  - apt
+  - apt-get
+  - node
+  - perl
+  - ruby
+  - php
+  - rm
+  - rmdir
+  - mv
+  - cp
+subcommand_ask:
+  - git:push
+  - git:clean
+  - git:reset:--hard
+  - git:checkout:.
+  - git:restore:.
+  - gh:pr:merge
+  - gh:repo:delete
+  - gh:repo:archive
+  - gh:release:delete
+allowed_dirs_extra: []

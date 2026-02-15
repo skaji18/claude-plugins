@@ -10,6 +10,7 @@ Claude Code plugins collection by skaji18.
 |--------|-------------|---------|
 | [impact-analysis](plugins/impact-analysis/) | Code impact analysis skill (PHP / JS / TS) | 1.1.0 |
 | [task-tracker](plugins/task-tracker/) | Obsidian-compatible task management plugin | 1.0.0 |
+| [permission-guard](plugins/permission-guard/) | 8-phase Bash command validation hook | 1.0.0 |
 
 ## Prerequisites
 
@@ -24,6 +25,11 @@ Claude Code plugins collection by skaji18.
 ### task-tracker
 
 - [Obsidian](https://obsidian.md/) vault (local directory)
+
+### permission-guard
+
+- [Python 3](https://www.python.org/) (required)
+- [PyYAML](https://pypi.org/project/PyYAML/) (optional, for config customization)
 
 ## Installation
 
@@ -45,6 +51,16 @@ bash plugins/task-tracker/scripts/setup.sh
 
 # Verify setup
 bash plugins/task-tracker/scripts/validate.sh
+```
+
+### permission-guard
+
+```bash
+# Verify dependencies
+bash plugins/permission-guard/scripts/setup.sh
+
+# Run tests
+bash plugins/permission-guard/scripts/test-permission.sh
 ```
 
 Alternatively, use the `/init` command in Claude Code for interactive setup.
@@ -105,6 +121,27 @@ Obsidian-compatible task management plugin. Captures work tasks from chat messag
 | `/delete` | Remove a task |
 
 See [plugins/task-tracker/README.md](plugins/task-tracker/) for full documentation.
+
+## Plugin: permission-guard
+
+8-phase Bash command validation hook that intercepts `PermissionRequest` events. Auto-approves safe commands and blocks dangerous patterns before they reach the user dialog.
+
+### Features
+
+- **8-phase validation pipeline**: Null byte check, sanitization, shell syntax rejection, command parsing, flag normalization, path resolution, scripts/hooks auto-approval, general command rules
+- **4-layer config merge**: Hardcoded defaults → Plugin config → Project config → Local overlay
+- **Security floors**: `sudo`, `su`, `rm`, `rmdir` always require dialog (cannot be overridden)
+- **Frozen keys**: `interpreters` config cannot be modified by project or local configs
+- **Subcommand rules**: Block destructive subcommands like `git push`, `git reset --hard`, `gh pr merge`
+- **Dual-mode**: Works as a plugin (`$CLAUDE_PLUGIN_ROOT`) or inline (`.claude/hooks/`)
+
+### Commands
+
+| Command | Purpose |
+|---------|---------|
+| `/permission-guard:permission-test` | Run validation test suite |
+
+See [plugins/permission-guard/README.md](plugins/permission-guard/) for full documentation.
 
 ## Contributing
 

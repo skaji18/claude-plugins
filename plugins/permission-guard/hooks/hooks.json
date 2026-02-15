@@ -1,0 +1,17 @@
+{
+  "description": "8-phase Bash command permission validation. Auto-approves safe commands, blocks dangerous patterns.",
+  "hooks": {
+    "PermissionRequest": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "${CLAUDE_PLUGIN_ROOT}/scripts/permission-fallback",
+            "timeout": 5
+          }
+        ]
+      }
+    ]
+  }
+}
