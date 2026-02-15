@@ -92,25 +92,136 @@ def load_config():
                 "dangerous_long_flags": ["--command", "--eval"]
             },
             "bash": {
-                "safe_flags": ["n"],
+                "safe_flags": ["n", "x", "e", "u", "v", "E", "f", "r"],
                 "dangerous_flags": ["c", "i"],
                 "dangerous_long_flags": ["--init-file", "--rcfile"]
             },
             "sh": {
-                "safe_flags": [],
+                "safe_flags": ["x", "e", "u", "v", "E", "f", "r"],
                 "dangerous_flags": ["c", "i"],
                 "dangerous_long_flags": ["--init-file", "--rcfile"]
+            },
+            "node": {
+                "safe_flags": ["v"],
+                "dangerous_flags": ["e", "p"],
+                "dangerous_long_flags": ["--eval", "--print", "--require", "--input-type"]
+            },
+            "perl": {
+                "safe_flags": ["w", "T", "c", "v"],
+                "dangerous_flags": ["e", "E"],
+                "dangerous_long_flags": []
+            },
+            "ruby": {
+                "safe_flags": ["w", "d", "v"],
+                "dangerous_flags": ["e"],
+                "dangerous_long_flags": ["--eval"]
+            },
+            "php": {
+                "safe_flags": ["v", "i", "m"],
+                "dangerous_flags": ["r"],
+                "dangerous_long_flags": ["--run"]
             }
         },
+        "interpreters_extra": {},
         "always_ask": [
             "curl", "wget", "ssh", "scp", "rsync", "nc",
             "sudo", "su",
             "eval", "exec", "xargs", "env", "nohup", "timeout",
             "busybox", "screen", "tmux", "script",
             "pip", "pip3", "npm", "apt", "apt-get",
-            "node", "perl", "ruby", "php",
-            "rm", "rmdir", "mv", "cp"
+            "rm", "rmdir", "mv", "cp",
+            "python", "python2",                          # F-003
+            "dash", "zsh", "ksh", "fish", "csh", "tcsh",  # F-004
+            "command",                                      # F-010
+            "find", "chmod", "chown"                        # NEW-6
         ],
+        "known_safe": [
+            "ls", "cat", "head", "tail", "wc", "sort", "uniq", "cut", "paste",
+            "tr", "tee", "diff", "cmp", "comm",
+            "grep", "rg", "fd", "fzf", "ag", "ack",
+            "sed", "awk", "jq", "yq",
+            "date", "cal", "echo", "printf", "true", "false", "test", "[",
+            "basename", "dirname", "realpath", "readlink",
+            "stat", "file", "which", "type",
+            "whoami", "id", "uname", "hostname", "pwd",
+            "printenv",
+            "tree", "du", "df", "free", "uptime",
+            "less", "more",
+            "xxd", "od", "hexdump",
+            "md5sum", "sha256sum", "base64",
+            "column", "expand", "unexpand", "fold", "fmt", "nl", "rev",
+            "seq", "yes",
+            "git", "gh",
+            "make", "cargo", "gcc", "g++", "cc", "c++",
+            "go", "rustc", "javac", "java",
+            "docker", "kubectl",
+            "npx", "yarn", "pnpm",
+        ],
+        "known_safe_extra": [],
+        "subcommand_rules": {
+            "git": {
+                "allow": [
+                    "status", "log", "diff", "show", "branch", "tag", "remote",
+                    "stash", "describe", "shortlog", "blame", "bisect",
+                    "reflog", "rev-parse", "rev-list", "ls-files", "ls-tree",
+                    "ls-remote", "cat-file", "for-each-ref", "name-rev",
+                    "config", "var", "help", "version",
+                    "count-objects", "fsck", "verify-pack",
+                    "notes", "grep", "log", "whatchanged",
+                    "add", "commit", "fetch", "clone", "init",
+                    "mv", "rm", "switch", "worktree",
+                    "cherry-pick", "apply", "am",
+                    "submodule", "sparse-checkout",
+                    "archive", "bundle",
+                ],
+                "ask": [
+                    "push", "pull", "merge", "rebase", "reset",
+                    "checkout:.", "restore:.",
+                    "clean",
+                    "stash:drop", "stash:clear",
+                    "branch:-D", "tag:-d",
+                    "filter-branch",
+                    "gc",
+                ],
+                "default_action": "ask"
+            },
+            "docker": {
+                "allow": [
+                    "ps", "images", "logs", "inspect", "info", "version",
+                    "stats", "top", "port", "diff", "history",
+                    "network:ls", "network:inspect",
+                    "volume:ls", "volume:inspect",
+                    "compose:ps", "compose:logs", "compose:config",
+                ],
+                "ask": [
+                    "run", "exec", "rm", "rmi", "stop", "kill",
+                    "build", "push", "pull",
+                    "system:prune",
+                    "compose:up", "compose:down", "compose:build",
+                ],
+                "default_action": "ask"
+            },
+            "gh": {
+                "allow": [
+                    "pr:list", "pr:view", "pr:status", "pr:checks", "pr:diff",
+                    "issue:list", "issue:view", "issue:status",
+                    "repo:list", "repo:view",
+                    "run:list", "run:view",
+                    "release:list", "release:view",
+                    "api",
+                    "auth:status",
+                    "status",
+                ],
+                "ask": [
+                    "pr:merge", "pr:close", "pr:reopen",
+                    "issue:close", "issue:delete",
+                    "repo:delete", "repo:archive",
+                    "release:delete", "release:create",
+                    "run:cancel",
+                ],
+                "default_action": "ask"
+            }
+        },
         "subcommand_ask": [
             "git:push",
             "git:clean",
@@ -120,7 +231,13 @@ def load_config():
             "gh:pr:merge",
             "gh:repo:delete",
             "gh:repo:archive",
-            "gh:release:delete"
+            "gh:release:delete",
+            "git:stash:drop",       # NEW-5
+            "git:stash:clear",      # NEW-5
+            "git:rebase",           # NEW-5
+            "git:branch:-D",        # NEW-5
+            "git:tag:-d",           # NEW-5
+            "git:filter-branch"     # NEW-5
         ],
         "allowed_dirs_extra": []
     }
@@ -217,6 +334,38 @@ def load_config():
                     )
             default_config['allowed_dirs_extra'] = sorted(base_dirs)
 
+        # known_safe_extra: union (append-only, cannot remove from base known_safe)
+        if 'known_safe_extra' in project_conf:
+            base_extra = set(default_config.get('known_safe_extra', []))
+            proj_value = project_conf['known_safe_extra']
+            if isinstance(proj_value, list):
+                base_extra |= set(proj_value)
+            elif proj_value is not None:
+                if DEBUG:
+                    print(
+                        f"WARNING: known_safe_extra expected array, got "
+                        f"{type(proj_value).__name__}. Ignoring.",
+                        file=sys.stderr,
+                    )
+            default_config['known_safe_extra'] = sorted(base_extra)
+
+        # interpreters_extra: merge (additive only, cannot override base interpreters)
+        if 'interpreters_extra' in project_conf:
+            proj_value = project_conf['interpreters_extra']
+            if isinstance(proj_value, dict):
+                base_extra = default_config.get('interpreters_extra', {})
+                for k, v in proj_value.items():
+                    if isinstance(v, dict):
+                        base_extra[k] = v
+                default_config['interpreters_extra'] = base_extra
+            elif proj_value is not None:
+                if DEBUG:
+                    print(
+                        f"WARNING: interpreters_extra expected mapping, got "
+                        f"{type(proj_value).__name__}. Ignoring.",
+                        file=sys.stderr,
+                    )
+
     # Layer 3: Merge local overlay (if exists)
     if os.path.exists(local_path):
         if not HAS_YAML:
@@ -293,22 +442,53 @@ def load_config():
                     )
             default_config['allowed_dirs_extra'] = sorted(base_dirs)
 
+        # known_safe_extra: union (append-only)
+        if 'known_safe_extra' in local:
+            base_extra = set(default_config.get('known_safe_extra', []))
+            local_value = local['known_safe_extra']
+            if isinstance(local_value, list):
+                base_extra |= set(local_value)
+            elif local_value is not None:
+                if DEBUG:
+                    print(
+                        f"WARNING: known_safe_extra expected array, got "
+                        f"{type(local_value).__name__}. Ignoring.",
+                        file=sys.stderr,
+                    )
+            default_config['known_safe_extra'] = sorted(base_extra)
+
+        # interpreters_extra: merge (additive only)
+        if 'interpreters_extra' in local:
+            local_value = local['interpreters_extra']
+            if isinstance(local_value, dict):
+                base_extra = default_config.get('interpreters_extra', {})
+                for k, v in local_value.items():
+                    if isinstance(v, dict):
+                        base_extra[k] = v
+                default_config['interpreters_extra'] = base_extra
+            elif local_value is not None:
+                if DEBUG:
+                    print(
+                        f"WARNING: interpreters_extra expected mapping, got "
+                        f"{type(local_value).__name__}. Ignoring.",
+                        file=sys.stderr,
+                    )
+
     return default_config
 
 
 def canonicalize_path(path):
     """
-    Portable path normalization (lexical, with .. resolution).
-    Equivalent to bash _canonicalize_path function.
-    Uses os.path.normpath to resolve .. and . components.
+    Portable path normalization with symlink resolution (F-006).
+    Uses os.path.realpath to resolve symlinks and .. components.
+    realpath() internally calls normpath(), so both symlinks and
+    lexical components (.., ., //) are handled.
     """
-    # Normalize the path (resolves . and .., removes duplicate /)
-    # Use os.path.normpath which handles .. correctly
-    normalized = os.path.normpath(path)
+    # Resolve symlinks and normalize (handles . and .., duplicate /)
+    resolved = os.path.realpath(path)
 
     # Ensure the result is in POSIX format (forward slashes)
-    # normpath uses os.sep which could be backslash on Windows
-    return normalized.replace(os.sep, '/')
+    return resolved.replace(os.sep, '/')
 
 
 def phase_s0_null_byte_check(input_str, command):
@@ -327,11 +507,17 @@ def phase_s0_null_byte_check(input_str, command):
 
 
 def phase_1_sanitize(input_data, command):
-    """Phase 1: Control chars, tool_name validation."""
+    """Phase 1: Control chars, tool_name validation, Unicode whitespace."""
     # Guard S1: Control characters (0x00-0x1F, 0x7F)
     # Using regex to match any control character
     if re.search(r'[\x00-\x1f\x7f]', command):
         reject("S1:control_chars")
+
+    # Guard S1.5 (F-016): Reject Unicode whitespace characters
+    # Python str.split() splits on Unicode whitespace that bash does not recognize,
+    # creating parse discrepancies where the hook sees different tokens than bash.
+    if re.search(r'[\u0085\u00a0\u2000-\u200b\u2028\u2029\u202f\u205f\u3000\ufeff]', command):
+        reject("S1:unicode_whitespace")
 
     # Guard S2: tool_name must be "Bash"
     tool_name = input_data.get("tool_name", "")
@@ -439,8 +625,9 @@ def phase_2_shell_syntax(command):
     if re.search(r'\$\(', command):
         reject("P3:cmd_substitution")
 
-    # Guard P4: Variable/arithmetic expansion
-    if re.search(r'\$[A-Za-z_{0-9\[]', command):
+    # Guard P4 (F-014): Variable/arithmetic expansion
+    # Broadened regex: catch $!, $#, $@, $-, $? and all other $X patterns
+    if re.search(r'\$[^\s]', command):
         reject("P4:var_expansion")
 
     # Guard P5: Environment variable assignment
@@ -460,6 +647,13 @@ def phase_2_shell_syntax(command):
     if re.match(r'^(python3|bash|sh)(scripts/|\.claude/)', command):
         reject("P2:no_space_after_interpreter")
 
+    # Guard P8.5 (F-001): Reject quote/backslash characters in command name position
+    # This blocks: "rm", 'bash', $'curl', \rm, r""m
+    first_space = command.find(' ')
+    cmd_part = command[:first_space] if first_space > 0 else command
+    if re.search(r"""['\"\\]""", cmd_part):
+        reject("P2:quoted_command_name")
+
 
 def phase_3_parse_command(command, config):
     """Phase 3: Split into words, identify interpreter."""
@@ -473,8 +667,16 @@ def phase_3_parse_command(command, config):
     script_path = ""
 
     # Check if interpreter is in known interpreters (case-sensitive)
+    # Also check interpreters_extra for user-defined interpreters
     interpreters_list = list(config["interpreters"].keys())
+    interpreters_extra = config.get("interpreters_extra", {})
     is_known_interpreter = interpreter in interpreters_list
+
+    # If not in base interpreters, check interpreters_extra
+    if not is_known_interpreter and interpreter in interpreters_extra:
+        # Merge extra interpreter config into main interpreters for Phase 4 use
+        config["interpreters"][interpreter] = interpreters_extra[interpreter]
+        is_known_interpreter = True
 
     if not is_known_interpreter:
         # Check for shell builtins (source, ., exec, eval)
@@ -504,23 +706,30 @@ def phase_4_normalize_flags(words, interpreter, script_path, is_known_interprete
         word = words[idx]
 
         if word.startswith("-"):
-            # Check for dangerous long flags (exact match)
-            if word in danger_long_flags:
-                reject("P4:dangerous_flag")
+            # Check for dangerous long flags (F-008: prefix match with =value)
+            for dlf in danger_long_flags:
+                if word == dlf or word.startswith(dlf + "="):
+                    reject("P4:dangerous_flag")
 
-            # Check for dangerous single-char flags
+            # Check for dangerous single-char flags (prefix match: -c, -ccode, etc.)
             for flag_char in danger_flags:
-                # Exact match: -c, -e, -m
-                if word == f"-{flag_char}":
-                    reject("P4:dangerous_flag")
-                # Prefix match: -c"code", -ccode
-                if word.startswith(f"-{flag_char}"):
+                if word == f"-{flag_char}" or word.startswith(f"-{flag_char}"):
                     reject("P4:dangerous_flag")
 
-            # Check for safe single-char flags (exactly 2 chars)
-            if len(word) == 2:
-                flag_char = word[1]
-                if flag_char in safe_flags:
+            # Compound flag decomposition: -xeu -> check x, e, u individually
+            # Only for short flags (not --long-flags)
+            if len(word) >= 2 and not word.startswith("--"):
+                # Step 1: Check dangerous flags first (priority)
+                for ch in word[1:]:
+                    if ch in danger_flags:
+                        reject("P4:dangerous_flag")
+                # Step 2: Verify all chars are safe
+                all_safe = True
+                for ch in word[1:]:
+                    if ch not in safe_flags:
+                        all_safe = False
+                        break
+                if all_safe:
                     idx += 1
                     continue
 
@@ -567,8 +776,8 @@ def phase_6_scripts_hooks_check(abs_path, is_known_interpreter):
     if abs_path == PROJECT_DIR or abs_path.startswith(project_prefix):
         rel_path = abs_path[len(project_prefix):] if abs_path.startswith(project_prefix) else ""
 
-        # Check 2a: scripts/ containment
-        if rel_path.startswith("scripts/") or "/scripts/" in rel_path:
+        # Check 2a: scripts/ containment (F-005: startswith only, no substring match)
+        if rel_path.startswith("scripts/"):
             allow()
 
         # Check 2b: .claude/hooks/ containment
@@ -585,62 +794,136 @@ def phase_6_scripts_hooks_check(abs_path, is_known_interpreter):
 
 
 def phase_7b2_subcommand_check(words, config):
-    """Phase 7B2: NEW - Check subcommand deny rules."""
+    """Phase 7B2: Subcommand evaluation with safe-enumeration (subcommand_rules)
+    and legacy deny rules (subcommand_ask)."""
     subcommand_ask = config.get("subcommand_ask", [])
-    if not subcommand_ask:
+    subcommand_rules = config.get("subcommand_rules", {})
+
+    if not subcommand_ask and not subcommand_rules:
         return  # No rules configured
 
     # Extract command name (basename)
     cmd_name = os.path.basename(words[0])
 
     # Only apply subcommand checks if the command is not path-like
-    # (i.e., "./git" or "/usr/bin/git" should not match "git" rules)
-    # This prevents false positives for project scripts named "git", "gh", etc.
     first_word = words[0]
     if "/" in first_word:
-        # Path-like command: skip subcommand checks
-        # These will be handled by Phase 7D path containment
         return
 
     # Extract subcommands and arguments (skip flags)
+    # F-002: Track leading flags (flags before first subcommand) for fail-closed
+    has_leading_flags = False
     subcommands = []
     all_args = []
 
     for i in range(1, len(words)):
         word = words[i]
-        # Don't parse flags as subcommands
-        if not word.startswith("-"):
-            subcommands.append(word)
         all_args.append(word)
+        if word.startswith("-"):
+            if not subcommands:  # Flag before any subcommand
+                has_leading_flags = True
+        else:
+            # F-007: Normalize path-like subcommand arguments
+            subcommands.append(os.path.normpath(word))
 
-    # Check each deny rule
+    # F-002: If leading flags exist and this command has rules, fail closed
+    cmd_has_rules = (
+        cmd_name in subcommand_rules
+        or any(rule.split(":")[0] == cmd_name for rule in subcommand_ask)
+    )
+    if has_leading_flags and cmd_has_rules:
+        reject(f"P7B2:leading_flags:{cmd_name}")
+
+    # --- New: subcommand_rules (safe-enumeration) ---
+    if cmd_name in subcommand_rules:
+        rules = subcommand_rules[cmd_name]
+        allow_list = rules.get("allow", [])
+        ask_list = rules.get("ask", [])
+        default_action = rules.get("default_action", "ask")
+
+        if not subcommands:
+            # No subcommand provided (e.g., bare "git") - allow (shows help)
+            return
+
+        # Build the subcommand key for matching
+        # Support nested subcommands: "stash:drop" matches subcommands ["stash", "drop"]
+        first_sub = subcommands[0]
+        compound_key = first_sub
+        if len(subcommands) > 1:
+            compound_key = first_sub + ":" + subcommands[1]
+
+        # Check ask list first (explicit deny takes priority)
+        for ask_entry in ask_list:
+            ask_parts = ask_entry.split(":")
+            if len(ask_parts) == 1:
+                # Simple subcommand match: "push", "clean", etc.
+                if first_sub == ask_parts[0]:
+                    reject(f"P7B2:subcommand_rules_ask:{cmd_name}:{ask_entry}")
+            elif len(ask_parts) == 2:
+                # Compound match: "stash:drop", "branch:-D", "checkout:."
+                # First part matches subcommand, second part matches next subcommand or flag
+                if first_sub == ask_parts[0]:
+                    second = ask_parts[1]
+                    if second.startswith("-"):
+                        # Flag check: look for flag in all_args
+                        if second in all_args:
+                            reject(f"P7B2:subcommand_rules_ask:{cmd_name}:{ask_entry}")
+                    else:
+                        # Subcommand check: match second positional subcommand
+                        normalized_second = os.path.normpath(second)
+                        if len(subcommands) > 1 and subcommands[1] == normalized_second:
+                            reject(f"P7B2:subcommand_rules_ask:{cmd_name}:{ask_entry}")
+
+        # Check allow list
+        for allow_entry in allow_list:
+            allow_parts = allow_entry.split(":")
+            if len(allow_parts) == 1:
+                if first_sub == allow_parts[0]:
+                    return  # Allowed, continue to path checks
+            elif len(allow_parts) == 2:
+                if first_sub == allow_parts[0]:
+                    second = allow_parts[1]
+                    if second.startswith("-"):
+                        if second in all_args:
+                            return
+                    else:
+                        normalized_second = os.path.normpath(second)
+                        if len(subcommands) > 1 and subcommands[1] == normalized_second:
+                            return
+
+        # Not in allow or ask lists - apply default_action
+        if default_action == "ask":
+            reject(f"P7B2:subcommand_rules_default:{cmd_name}:{first_sub}")
+        # default_action == "allow" would fall through (allow)
+        return
+
+    # --- Legacy: subcommand_ask (danger-enumeration, backward compat) ---
     for rule in subcommand_ask:
         parts = rule.split(":")
 
         if len(parts) < 2:
-            continue  # Invalid rule
+            continue
 
         rule_cmd = parts[0]
         rule_subs = parts[1:]
 
-        # Match command name
         if cmd_name != rule_cmd:
             continue
 
-        # Match subcommands
+        # Match subcommands (F-009: separate sub_idx to avoid index confusion)
         matched = True
-        for i, rule_sub in enumerate(rule_subs):
-            # Check if this part is a flag (starts with -)
-            if rule_sub.startswith("--"):
-                # Flag pattern: check if flag appears anywhere in args
+        sub_idx = 0
+        for rule_sub in rule_subs:
+            if rule_sub.startswith("-"):
                 if rule_sub not in all_args:
                     matched = False
                     break
             else:
-                # Subcommand pattern: check positional match
-                if i >= len(subcommands) or subcommands[i] != rule_sub:
+                normalized_rule = os.path.normpath(rule_sub)
+                if sub_idx >= len(subcommands) or subcommands[sub_idx] != normalized_rule:
                     matched = False
                     break
+                sub_idx += 1
 
         if matched:
             reject(f"P7B2:subcommand_ask:{rule}")
@@ -662,22 +945,37 @@ def phase_7_general_command(words, config):
         if cmd_lower == interp and cmd_name != interp:
             reject(f"P7A2:case_mismatch:{cmd_name}")
 
-    # Step 7B: Check ALWAYS_ASK list
+    # Step 7B: Check ALWAYS_ASK list (F-013: case-insensitive matching)
     always_ask = config.get("always_ask", [])
-    if cmd_name in always_ask:
+    always_ask_lower = {a.lower() for a in always_ask}
+    if cmd_name.lower() in always_ask_lower:
         reject(f"P7B:always_ask:{cmd_name}")
 
     # Step 7B2: Check subcommand deny rules (NEW PHASE)
     phase_7b2_subcommand_check(words, config)
 
-    # Step 7C: Collect path-like arguments
+    # Step 7B3: deny-by-default with known_safe check
+    # If command is NOT in known_safe + known_safe_extra, return ask
+    known_safe = set(config.get("known_safe", []))
+    known_safe_extra = set(config.get("known_safe_extra", []))
+    all_known_safe = known_safe | known_safe_extra
+    if cmd_name not in all_known_safe:
+        if DEBUG:
+            print(f"P7B3:deny_by_default:{cmd_name}", file=sys.stderr)
+        reject(f"P7B3:not_known_safe:{cmd_name}")
+
+    # Step 7C: Collect path candidates (ALL non-flag positional args)
+    # Changed from "/" heuristic to all-argument path candidacy.
+    # Non-path arguments (e.g., "status" in "git status") resolve to
+    # PROJECT_DIR/status which passes containment (harmless, no false rejection).
+    # NOTE: Flag arguments that are paths (e.g., git -C /path) are intentionally
+    # checked for containment. This is correct behavior (F-012).
     path_args = []
     past_dd = False  # past "--" marker
 
     # Check words[0] first (for direct execution, this is the script path)
     first_word = words[0]
     if "/" in first_word:
-        # First word is path-like, add it to path_args
         path_args.append(first_word)
 
     for i in range(1, len(words)):
@@ -692,7 +990,7 @@ def phase_7_general_command(words, config):
         if word.startswith("-") and not past_dd:
             continue
 
-        # Strip surrounding quotes (read -ra doesn't process shell quotes)
+        # Strip surrounding quotes
         word_stripped = word
         if len(word_stripped) >= 2:
             if (word_stripped[0] == '"' and word_stripped[-1] == '"') or \
@@ -703,24 +1001,17 @@ def phase_7_general_command(words, config):
         if "://" in word_stripped:
             reject(f"P7C:url_detected:{word_stripped}")
 
-        # Check if path-like
-        # Rule 1: starts with /
-        # Rule 2: starts with ./ or ../
-        # Rule 3: contains / anywhere
-        if word_stripped.startswith("/") or \
-           word_stripped.startswith("./") or \
-           word_stripped.startswith("../") or \
-           "/" in word_stripped:
-            path_args.append(word_stripped)
+        # ALL non-flag arguments are path candidates (no "/" filter)
+        path_args.append(word_stripped)
 
     if DEBUG:
         print(f"P7C:paths={' '.join(path_args) if path_args else 'none'}", file=sys.stderr)
 
     # Step 7D: Check path containment
     if not path_args:
-        # No path-like arguments - allow
+        # No positional arguments at all - allow (command with only flags)
         if DEBUG:
-            print("P7D:allow:no_paths", file=sys.stderr)
+            print("P7D:allow:no_args", file=sys.stderr)
         allow()
 
     # Check if this is direct execution (first word is a path)
@@ -772,8 +1063,8 @@ def phase_7_general_command(words, config):
             # Check if path is within scripts/ or .claude/hooks/
             rel_path = p7_abs[len(project_prefix):] if p7_abs.startswith(project_prefix) else ""
 
-            # Check scripts/ containment
-            if rel_path.startswith("scripts/") or "/scripts/" in rel_path:
+            # Check scripts/ containment (F-005: startswith only, no substring match)
+            if rel_path.startswith("scripts/"):
                 continue  # OK, check next path
 
             # Check .claude/hooks/ containment
