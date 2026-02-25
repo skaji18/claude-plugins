@@ -41,6 +41,17 @@
       "category": "development"
     },
     {
+      "name": "smart-commit",
+      "description": "git diff を解析してコミットメッセージを LLM が自動生成。Co-Authored-By 自動付与で1コマンドコミット。",
+      "version": "1.0.0",
+      "author": {
+        "name": "skaji18",
+        "email": "skaji18@users.noreply.github.com"
+      },
+      "source": "./plugins/smart-commit",
+      "category": "development"
+    },
+    {
       "name": "permission-guard",
       "description": "8-phase Bash command validation hook. Auto-approves safe commands, blocks shell injection and dangerous patterns.",
       "version": "1.0.0",

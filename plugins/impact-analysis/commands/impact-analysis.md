@@ -1,12 +1,12 @@
 ---
 description: コードの影響範囲を調査するスキル（PHP / JS / TS 対応）
-allowed-tools: [Bash(lsprefs*), Bash(lsprefs-walk*), Bash(rg*), Read, Grep, Glob, Write]
+allowed-tools: [Bash(impact*), Bash(rg*), Read, Grep, Glob, Write]
 ---
 
 # impact-analysis: コード影響調査スキル
 
 あなたはコードの影響調査を行うスキルです。
-ユーザーの調査リクエスト（自然言語）を受け取り、既存ツール（`lsprefs-walk`, `lsprefs`, `rg`）を使って影響範囲を機械的に追跡し、**evidence.tsv**（証跡一覧）と **summary.md**（人間用レポート）を生成します。
+ユーザーの調査リクエスト（自然言語）を受け取り、既存ツール（`impact`, `rg`）を使って影響範囲を機械的に追跡し、**evidence.tsv**（証跡一覧）と **summary.md**（人間用レポート）を生成します。
 
 **対応言語**: PHP, JavaScript, TypeScript
 
@@ -26,7 +26,7 @@ allowed-tools: [Bash(lsprefs*), Bash(lsprefs-walk*), Bash(rg*), Read, Grep, Glob
 ## 前提条件
 
 以下のツールが利用可能であること:
-- `lsprefs` / `lsprefs-walk` — 影響追跡ツール（Go バイナリ）
+- `impact` — 影響追跡ツール（Go バイナリ、旧 lsprefs + lsprefs-walk 統合版）
 - `rg` (ripgrep) — コード検索
 - LSP サーバー（言語に応じて自動選択、下記参照）
 
@@ -37,9 +37,8 @@ allowed-tools: [Bash(lsprefs*), Bash(lsprefs-walk*), Bash(rg*), Read, Grep, Glob
 
 | 変数 | 説明 | デフォルト |
 |------|------|-----------|
-| `AI_TOOLS_DIR` | ai-tools リポジトリのパス | `~/projects/ai-tools` |
 | `REPO_PATH` | 調査対象リポジトリのパス | （ユーザー指定必須） |
-| `OUT_DIR` | 出力ディレクトリ | `${AI_TOOLS_DIR}/out` |
+| `OUT_DIR` | 出力ディレクトリ | `${REPO_PATH}/out` |
 | `MAX_DEPTH` | BFS 最大深度 | `4` |
 | `MAX_NODES` | 最大ノード数 | `2000` |
 | `EXCLUDE` | 除外パターン（カンマ区切り） | `vendor/**,.git/**,.cache/**,node_modules/**,tests/**` |
@@ -58,7 +57,7 @@ allowed-tools: [Bash(lsprefs*), Bash(lsprefs-walk*), Bash(rg*), Read, Grep, Glob
 **判定ルール**:
 1. 起点ファイルの拡張子を確認する
 2. 上記テーブルから対応する `LSP_SERVER` コマンドを決定する
-3. `lsprefs start --server "${LSP_SERVER}"` と `lsprefs-walk run --server "${LSP_SERVER}"` の両方にこの値を使用する
+3. `impact server start --server "${LSP_SERVER}"` と `impact trace --server "${LSP_SERVER}"` の両方にこの値を使用する
 4. ユーザーが `--server` を明示的に指定した場合はそちらを優先する
 
 **rg 検索時のグロブ**:
@@ -193,7 +192,7 @@ STEP 0 で特定した起点の `rgline` は STEP 1 の形式（`file:line:col:t
 
 `rg --vimgrep` を使って対象シンボルを検索し、定義箇所を特定します。
 
-**パスの整合性が重要**: `rg` の実行場所と config.json の `root` が一致しないと、lsprefs-walk がファイルを二重パスで解決して失敗します。以下の方法で rg を実行してください:
+**パスの整合性が重要**: `rg` の実行場所と config.json の `root` が一致しないと、impact trace がファイルを二重パスで解決して失敗します。以下の方法で rg を実行してください:
 
 ```bash
 # 方法B（推奨）: REPO_PATH 内から実行
@@ -207,10 +206,9 @@ rg --vimgrep "<シンボル名>" -g'*.{ts,tsx,js,jsx}' . | head -n 20
 ```
 
 ```bash
-# 方法A: AI_TOOLS_DIR から実行し、REPO_PATH を検索対象に指定
-cd "${AI_TOOLS_DIR}"
+# 方法A: 別ディレクトリから実行し、REPO_PATH を検索対象に指定
 rg --vimgrep "<シンボル名>" -g'*.php' "${REPO_PATH}" | head -n 20
-# ⚠️ 注意: 方法Aは config.json の root と lsprefs デーモンの root の整合が取りにくく、
+# ⚠️ 注意: 方法Aは config.json の root とパスの整合が取りにくく、
 #    パスの二重化を引き起こしやすい。方法B を推奨。
 ```
 
@@ -241,11 +239,11 @@ rg --vimgrep "<シンボル名>" -g'*.php' "${REPO_PATH}" | head -n 20
 1. 各起点ごとに `RGLINE_1`, `RGLINE_2`, ... として記録する
 2. 各起点に対応する出力ファイル名を決める（例: `evidence-origin1.tsv`, `evidence-origin2.tsv`）
 3. STEP 3〜4 を各起点ごとに繰り返し実行する
-4. STEP 4.5 で `lsprefs-walk merge` を使って統合する
+4. STEP 4.5 で `impact merge` を使って統合する
 
 **注意**: 複数起点が**異なる言語**の場合（例: PHP 起点 + TS 起点）、各起点ごとに適切な `LSP_SERVER` を使い分ける必要があります。STEP 2〜4 を起点ごとに異なる `--server` で実行してください。
 
-**⚠️ カラム位置の重要な注意**: `rg --vimgrep` の col はマッチ開始位置（通常 `public` や `function` キーワード）を指す。しかし LSP の definition 解決にはカーソルが**シンボル名の上**にある必要がある。rgline の col がシンボル名を指していない場合、`lsprefs def` が `ambiguous definition: 0 candidates` を返す。
+**⚠️ カラム位置の重要な注意**: `rg --vimgrep` の col はマッチ開始位置（通常 `public` や `function` キーワード）を指す。しかし LSP の definition 解決にはカーソルが**シンボル名の上**にある必要がある。rgline の col がシンボル名を指していない場合、`impact def` が `ambiguous definition: 0 candidates` を返す。
 
 修正方法: rg 出力の col をシンボル名の開始位置に書き換える。
 ```
@@ -257,11 +255,11 @@ rg --vimgrep "<シンボル名>" -g'*.php' "${REPO_PATH}" | head -n 20
 
 **1-3. インターフェースメソッドの場合の補完**
 
-起点がインターフェースメソッド（PHP の `interface` / TypeScript の `interface`）の場合、LSP の `textDocument/references` は**ポリモーフィックな呼び出し箇所**のみを返し、**具象クラスの実装定義**は含まれない。このため lsprefs-walk の結果だけでは網羅性が不足する。
+起点がインターフェースメソッド（PHP の `interface` / TypeScript の `interface`）の場合、LSP の `textDocument/references` は**ポリモーフィックな呼び出し箇所**のみを返し、**具象クラスの実装定義**は含まれない。このため impact trace の結果だけでは網羅性が不足する。
 
 **推奨: `--resolve-implementations` フラグを使用する**
 
-STEP 4 で lsprefs-walk を実行する際に `--resolve-implementations` フラグを追加してください。このフラグを有効にすると、LSP の `textDocument/implementation` を使って具象実装を自動検出し、各実装を追加の BFS 起点として投入します。実装ノードには `note` に `resolved-impl` マーカーが付与されます。
+STEP 4 で impact trace を実行する際に `--resolve-implementations` フラグを追加してください。このフラグを有効にすると、LSP の `textDocument/implementation` を使って具象実装を自動検出し、各実装を追加の BFS 起点として投入します。実装ノードには `note` に `resolved-impl` マーカーが付与されます。
 
 設定方法:
 - CLI 引数: `--resolve-implementations`
@@ -271,30 +269,28 @@ STEP 4 で lsprefs-walk を実行する際に `--resolve-implementations` フラ
 
 `--resolve-implementations` が期待通り動作しない場合は、以下の手動手順を実行してください:
 1. `rg --vimgrep "function <メソッド名>" -g'*.php' .`（または `-g'*.{ts,tsx}'`）で具象実装の一覧を取得
-2. 実装数が少ない場合（〜10件）: 主要な実装それぞれを起点として追加の lsprefs-walk を実行
+2. 実装数が少ない場合（〜10件）: 主要な実装それぞれを起点として追加の impact trace を実行
 3. 実装数が多い場合（10件超）: summary.md に「N件の具象実装が存在し、signature 変更時は全て修正が必要」と記載し、一覧をリストアップ
-4. 呼び出し箇所の追跡は interface 起点の lsprefs-walk で十分（ポリモーフィック呼び出しが追跡される）
+4. 呼び出し箇所の追跡は interface 起点の impact trace で十分（ポリモーフィック呼び出しが追跡される）
 
 記録する際に、rg の実行場所（方法B or A）も覚えておいてください。STEP 3 のパス設定に必要です。
 
 ---
 
-### STEP 2: lsprefs デーモンの準備
+### STEP 2: impact server デーモンの準備
 
-`lsprefs-walk` は内部で `lsprefs` デーモンに接続して refs/def を取得します。デーモンが起動していることを確認し、未起動なら起動します。
+`impact trace` は内部で impact server デーモンに接続して refs/def を取得します。デーモンが起動していることを確認し、未起動なら起動します。
 
 **`--root` は config.json の `root` と同じ値を指定してください。** パスが異なるとファイル解決に失敗します。
 
 **`--server` には STEP 1-2a で決定した LSP サーバーコマンドを指定してください。**
 
 ```bash
-cd "${AI_TOOLS_DIR}"
-
 # PHP の場合:
-./bin/lsprefs start --root "$(cd "${REPO_PATH}" && pwd)" --server "intelephense --stdio"
+impact server start --root "$(cd "${REPO_PATH}" && pwd)" --server "intelephense --stdio"
 
 # JS/TS の場合:
-./bin/lsprefs start --root "$(cd "${REPO_PATH}" && pwd)" --server "typescript-language-server --stdio"
+impact server start --root "$(cd "${REPO_PATH}" && pwd)" --server "typescript-language-server --stdio"
 ```
 
 - `already running ...` と表示されたら OK（既に起動済み）
@@ -305,7 +301,7 @@ cd "${AI_TOOLS_DIR}"
 
 ### STEP 3: config.json の動的生成
 
-`lsprefs-walk` 用の設定ファイルを一時ファイルとして生成します。
+`impact` 用の設定ファイルを一時ファイルとして生成します。
 
 Write ツールで以下の JSON を生成してください。
 **全てのパスは絶対パスで記述することを推奨します**（相対パス起因のファイル解決失敗を防ぐため）。
@@ -313,7 +309,7 @@ Write ツールで以下の JSON を生成してください。
 ```json
 {
   "root": "<REPO_PATH の絶対パス>",
-  "lsprefs": "<AI_TOOLS_DIR の絶対パス>/bin/lsprefs",
+  "lsprefs": "impact",
   "state_dir": ".cache",
   "out": "<OUT_DIR の絶対パス>/evidence.tsv",
   "timeout": "30s",
@@ -351,20 +347,19 @@ Write ツールで以下の JSON を生成してください。
 ```
 
 **パス解決の注意**:
-- `root`: **STEP 2 の `lsprefs start --root` と同じ値にすること**。最も安全なのは絶対パス
-- `lsprefs`: 絶対パス推奨（例: `/Users/xxx/projects/ai-tools/bin/lsprefs`）
+- `root`: **STEP 2 の `impact server start --root` と同じ値にすること**。最も安全なのは絶対パス
+- `lsprefs`: `impact` と指定（`go install` で PATH に入っている前提）
 - `out`: 絶対パス推奨
 - `server`: LSP サーバーコマンド。PATH に入っていれば短縮名で可
 
 ---
 
-### STEP 4: lsprefs-walk の実行
+### STEP 4: impact trace の実行
 
 生成した config.json と起点 rgline を使って BFS 探索を実行します。
 
 ```bash
-cd "${AI_TOOLS_DIR}"
-./bin/lsprefs-walk run \
+impact trace \
   --config "${OUT_DIR}/impact-analysis-config.json" \
   --rgline "${RGLINE}" \
   --server "${LSP_SERVER}" \
@@ -374,8 +369,7 @@ cd "${AI_TOOLS_DIR}"
 **インターフェースメソッド起点の場合**: `--resolve-implementations` を追加して具象実装も自動追跡してください:
 
 ```bash
-cd "${AI_TOOLS_DIR}"
-./bin/lsprefs-walk run \
+impact trace \
   --config "${OUT_DIR}/impact-analysis-config.json" \
   --rgline "${RGLINE}" \
   --server "${LSP_SERVER}" \
@@ -387,18 +381,18 @@ cd "${AI_TOOLS_DIR}"
 
 **注意**: `--rgline` に渡すパスは STEP 1 で rg が出力したそのままの値を使ってください。config.json の `root` と整合していれば正しく動作します。stderr に `wrote <path>` と表示されれば成功です。
 
-**複数起点の場合**: 各起点ごとに lsprefs-walk run を実行します。
+**複数起点の場合**: 各起点ごとに impact trace を実行します。
 
 ```bash
 # 起点1（例: PHP）
-./bin/lsprefs-walk run \
+impact trace \
   --config "${OUT_DIR}/config-origin1.json" \
   --rgline "${RGLINE_1}" \
   --server "intelephense --stdio" \
   2>&1
 
 # 起点2（例: TypeScript）
-./bin/lsprefs-walk run \
+impact trace \
   --config "${OUT_DIR}/config-origin2.json" \
   --rgline "${RGLINE_2}" \
   --server "typescript-language-server --stdio" \
@@ -416,9 +410,9 @@ cd "${AI_TOOLS_DIR}"
 4. `status=truncated` の行がある場合、`max_nodes` や `max_depth` の引き上げを検討
 
 エラーが見つかった場合:
-- `lsprefs def failed` → 起点の rgline が不正。STEP 1 に戻り別の起点を選ぶ
+- `impact def failed` → 起点の rgline が不正。STEP 1 に戻り別の起点を選ぶ
 - `truncated` → パラメータを引き上げて STEP 3 から再実行（ユーザーに確認）
-- LSP 関連エラー → lsprefs デーモンの再起動を試みる
+- LSP 関連エラー → impact server デーモンの再起動を試みる
 
 ---
 
@@ -426,11 +420,10 @@ cd "${AI_TOOLS_DIR}"
 
 > **このステップは起点が複数ある場合のみ実行します。起点が1つの場合はスキップしてください。**
 
-STEP 4 で各起点ごとに生成された個別 evidence TSV を `lsprefs-walk merge` で統合します。
+STEP 4 で各起点ごとに生成された個別 evidence TSV を `impact merge` で統合します。
 
 ```bash
-cd "${AI_TOOLS_DIR}"
-./bin/lsprefs-walk merge \
+impact merge \
   --out "${OUT_DIR}/evidence.tsv" \
   "${OUT_DIR}/evidence-origin1.tsv" \
   "${OUT_DIR}/evidence-origin2.tsv"
@@ -466,10 +459,8 @@ cd "${AI_TOOLS_DIR}"
 evidence.tsv からコールグラフを Graphviz DOT 形式で生成できます。視覚的に影響範囲を俯瞰したい場合に使用します。
 
 ```bash
-cd "${AI_TOOLS_DIR}"
-
 # DOT ファイル生成
-./bin/lsprefs-walk graph --input "${OUT_DIR}/evidence.tsv" --output "${OUT_DIR}/graph.dot"
+impact graph --input "${OUT_DIR}/evidence.tsv" --output "${OUT_DIR}/graph.dot"
 
 # PNG 画像に変換（Graphviz が必要）
 dot -Tpng "${OUT_DIR}/graph.dot" -o "${OUT_DIR}/graph.png"
@@ -537,7 +528,7 @@ evidence.tsv は BFS 探索ログです。各カラムの意味:
 
 **kind の読み方**:
 - `NODE`: BFS キューに入った関数/メソッドの定義位置
-- `REF`: そのノードが参照されている箇所（= `lsprefs refs` の結果）
+- `REF`: そのノードが参照されている箇所（= `impact refs` の結果）
 - `DEF`: REF箇所を含む呼び出し元関数（enclosing callable）。**LSP の definition ではない**
 
 **status の読み方**:
@@ -710,8 +701,7 @@ evidence.tsv は BFS 探索ログです。各カラムの意味:
 
 ```bash
 # 例: PHP 側の変更が起点
-cd "${AI_TOOLS_DIR}"
-./bin/lsprefs-walk run \
+impact trace \
   --config "${OUT_DIR}/config-php.json" \
   --rgline "${RGLINE_PHP}" \
   --server "intelephense --stdio" \
@@ -753,11 +743,10 @@ rg --vimgrep "fetchUsers\|getUsers" -g'*.{ts,tsx,js,jsx}' . | head -n 20
 
 **C-4. 第2言語側の影響追跡**
 
-見つかった JS/TS ファイルから起点を選定し、第2言語側でも lsprefs-walk を実行します。
+見つかった JS/TS ファイルから起点を選定し、第2言語側でも impact trace を実行します。
 
 ```bash
-cd "${AI_TOOLS_DIR}"
-./bin/lsprefs-walk run \
+impact trace \
   --config "${OUT_DIR}/config-ts.json" \
   --rgline "${RGLINE_TS}" \
   --server "typescript-language-server --stdio" \
@@ -769,7 +758,7 @@ cd "${AI_TOOLS_DIR}"
 両言語の evidence.tsv を merge で統合します。
 
 ```bash
-./bin/lsprefs-walk merge \
+impact merge \
   --out "${OUT_DIR}/evidence.tsv" \
   "${OUT_DIR}/evidence-php.tsv" \
   "${OUT_DIR}/evidence-ts.tsv"
@@ -810,7 +799,7 @@ cd "${AI_TOOLS_DIR}"
 
 ### 配置と検出
 
-- **自動検出**: `lsprefs-walk run` はプロジェクトルート（`--root` で指定したディレクトリ）から上位に向かって `.impact-profile.json` を探し、見つかったら自動的にロードします。`using profile: <path>` が stderr に出力されます。
+- **自動検出**: `impact trace` はプロジェクトルート（`--root` で指定したディレクトリ）から上位に向かって `.impact-profile.json` を探し、見つかったら自動的にロードします。`using profile: <path>` が stderr に出力されます。
 - **明示指定**: `--profile <path>` オプションで任意のパスを指定できます。明示指定の場合、自動検出は行われません。
 
 ### プロファイルの構造
@@ -870,13 +859,13 @@ cd "${AI_TOOLS_DIR}"
 
 | エラー | 原因 | 対処 |
 |--------|------|------|
-| `lsprefs def failed` | 起点の rgline が不正、またはデーモン未起動 | STEP 1 で別の起点を選択、または STEP 2 でデーモン再起動 |
+| `impact def failed` | 起点の rgline が不正、またはデーモン未起動 | STEP 1 で別の起点を選択、または STEP 2 でデーモン再起動 |
 | `ambiguous definition: N candidates` | 定義が複数見つかった | rg 結果から定義箇所を絞り込んで再試行 |
 | `ambiguous definition: 0 candidates` | rgline の col がシンボル名を指していない | STEP 1 の「カラム位置の注意」に従い、col をシンボル名の開始位置に修正 |
-| `connect to daemon socket ... (is the daemon running?)` | lsprefs デーモンが停止 | STEP 2 で `lsprefs start` を実行 |
+| `connect to daemon socket ... (is the daemon running?)` | impact server デーモンが停止 | STEP 2 で `impact server start` を実行 |
 | `status=truncated` が多数 | 影響範囲が設定上限を超えた | `max_depth` / `max_nodes` を引き上げて再実行 |
 | `status=error` | LSP エラー等 | エラー内容を確認し、summary.md に注意事項として記載 |
 | `warning: resolve-implementations: textDocument/implementation` | LSP が implementation を未サポート | STEP 1-3 のフォールバック（手動 rg）を実行。BFS は通常通り続行される |
 | `warning: resolve-implementations: ...` | 実装解決に失敗（タイムアウト等） | stderr の警告を確認。BFS は通常通り続行されるが、具象実装が不足する可能性あり |
 | `merge requires at least 2 input files` | merge に入力ファイルが不足 | 2つ以上の evidence TSV を引数に指定 |
-| `expected 15 header columns, got N` | 入力 TSV のフォーマットが不正 | lsprefs-walk run で生成された正しい TSV（15列）を使用しているか確認 |
+| `expected 15 header columns, got N` | 入力 TSV のフォーマットが不正 | impact trace で生成された正しい TSV（15列）を使用しているか確認 |

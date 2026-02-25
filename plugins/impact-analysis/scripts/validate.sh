@@ -62,8 +62,7 @@ fi
 echo ""
 echo "--- Binaries ---"
 
-check_binary "lsprefs"
-check_binary "lsprefs-walk"
+check_binary "impact"
 check_binary "intelephense"
 check_binary "typescript-language-server"
 check_binary "rg"

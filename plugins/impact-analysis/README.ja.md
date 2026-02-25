@@ -10,7 +10,7 @@
 
 関数・メソッド・クラスを変更する際、「この変更は他のどこに影響するか？」という問いに答えるプラグインです。
 
-`lsprefs`（LSP 参照サーバー）と `lsprefs-walk`（BFS 探索ウォーカー）を使い、起点から参照チェーンを再帰的にたどり、以下を出力します:
+`impact` CLI（旧 `lsprefs` + `lsprefs-walk` 統合版）を使い、起点から参照チェーンを再帰的にたどり、以下を出力します:
 
 - **evidence.tsv** — 発見した全影響パスの機械可読な証跡ログ
 - **summary.md** — 重大な影響箇所をハイライトした人間向けレポート
@@ -52,7 +52,7 @@
 2. AI が橋渡しポイント（API エンドポイント、レスポンススキーマ、共有定数）を特定
 3. 第2言語側（例: TypeScript）で対応コードを検索
 4. 第2言語側で影響追跡を実行
-5. `lsprefs-walk merge` で結果を統合
+5. `impact merge` で結果を統合
 
 ## 出力ファイル
 
@@ -96,7 +96,7 @@ BFS 探索の全ステップを含むタブ区切りファイル。各行が1つ
 | JavaScript | `typescript-language-server --stdio` | `.js`, `.jsx`, `.mjs`, `.cjs` |
 | TypeScript | `typescript-language-server --stdio` | `.ts`, `.tsx` |
 
-LSP サーバーは起点ファイルの拡張子から自動判定されます。`lsprefs start` と `lsprefs-walk run` の `--server` フラグで手動指定も可能です。
+LSP サーバーは起点ファイルの拡張子から自動判定されます。`impact server start` と `impact trace` の `--server` フラグで手動指定も可能です。
 
 ## 設定
 
@@ -138,9 +138,9 @@ Claude Code で `/impact-analysis` スキルを呼び出します:
 |---------|------|
 | STEP 0 | 仕様 → コード箇所マッピング（パターン B のみ） |
 | STEP 1 | リクエスト解析、起点特定、言語判定 |
-| STEP 2 | lsprefs デーモンを適切な LSP サーバーで起動 |
-| STEP 3 | lsprefs-walk 用の config.json を生成 |
-| STEP 4 | lsprefs-walk で BFS 探索を実行 |
+| STEP 2 | impact server デーモンを適切な LSP サーバーで起動 |
+| STEP 3 | impact trace 用の config.json を生成 |
+| STEP 4 | impact trace で BFS 探索を実行 |
 | STEP 4.5 | 複数の evidence ファイルを統合（複数起点の場合のみ） |
 | STEP 5 | evidence.tsv を分析し、summary.md を生成 |
 | STEP 6 | 結果をユーザーに報告 |
@@ -149,8 +149,7 @@ Claude Code で `/impact-analysis` スキルを呼び出します:
 
 | ツール | インストール方法 | 用途 |
 |--------|---------------|------|
-| `lsprefs` | `go install github.com/skaji18/devtools/lsprefs@latest` | LSP 参照/定義デーモン |
-| `lsprefs-walk` | `go install github.com/skaji18/devtools/lsprefs-walk@latest` | BFS 影響追跡 |
+| `impact` | `go install github.com/skaji18/devtools/cmd/impact@latest` | 統合 CLI（LSP クエリ、BFS 探索、merge、graph） |
 | `intelephense` | `npm install -g intelephense` | PHP LSP サーバー |
 | `typescript-language-server` | `npm install -g typescript-language-server typescript` | JS/TS LSP サーバー |
 | `rg` (ripgrep) | [github.com/BurntSushi/ripgrep](https://github.com/BurntSushi/ripgrep) | コード検索 |

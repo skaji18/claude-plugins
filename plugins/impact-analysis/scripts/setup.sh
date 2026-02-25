@@ -52,18 +52,13 @@ echo ""
 
 # --- Install dependencies ---
 
-# Install lsprefs
-echo "[1/4] Installing lsprefs..."
-go install github.com/skaji18/devtools/lsprefs@latest
-echo "  lsprefs installed: $(which lsprefs)"
-
-# Install lsprefs-walk
-echo "[2/4] Installing lsprefs-walk..."
-go install github.com/skaji18/devtools/lsprefs-walk@latest
-echo "  lsprefs-walk installed: $(which lsprefs-walk)"
+# Install impact (unified CLI: replaces lsprefs + lsprefs-walk)
+echo "[1/4] Installing impact..."
+go install github.com/skaji18/devtools/cmd/impact@latest
+echo "  impact installed: $(which impact)"
 
 # Install intelephense (PHP LSP, only if not already installed)
-echo "[3/4] Checking intelephense..."
+echo "[2/4] Checking intelephense..."
 if command -v intelephense >/dev/null 2>&1; then
   echo "  intelephense already installed: $(which intelephense)"
 else
@@ -73,7 +68,7 @@ else
 fi
 
 # Install typescript-language-server (JS/TS LSP, only if not already installed)
-echo "[4/4] Checking typescript-language-server..."
+echo "[3/4] Checking typescript-language-server..."
 if command -v typescript-language-server >/dev/null 2>&1; then
   echo "  typescript-language-server already installed: $(which typescript-language-server)"
 else

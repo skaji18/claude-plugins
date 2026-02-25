@@ -10,7 +10,7 @@ LSP-based code impact analysis plugin for [Claude Code](https://claude.com/claud
 
 When modifying a function, method, or class, this plugin answers the question: *"What else is affected by this change?"*
 
-It uses `lsprefs` (LSP reference server) and `lsprefs-walk` (BFS traversal walker) to recursively follow reference chains from a starting point, producing:
+It uses the `impact` CLI (unified tool, formerly `lsprefs` + `lsprefs-walk`) to recursively follow reference chains from a starting point, producing:
 
 - **evidence.tsv** — Machine-readable trace log of all discovered impact paths
 - **summary.md** — Human-readable report highlighting critical impacts
@@ -52,7 +52,7 @@ Trace impact across language boundaries (e.g., PHP backend → TypeScript fronte
 2. AI identifies bridge points (API endpoints, response schemas, shared constants)
 3. Search for corresponding code in the second language (e.g., TypeScript)
 4. Run impact trace on the second language
-5. Merge results with `lsprefs-walk merge`
+5. Merge results with `impact merge`
 
 ## Output Files
 
@@ -96,7 +96,7 @@ A structured Markdown report including:
 | JavaScript | `typescript-language-server --stdio` | `.js`, `.jsx`, `.mjs`, `.cjs` |
 | TypeScript | `typescript-language-server --stdio` | `.ts`, `.tsx` |
 
-The LSP server is auto-detected from the entry point file extension. Use the `--server` flag in `lsprefs start` and `lsprefs-walk run` to override.
+The LSP server is auto-detected from the entry point file extension. Use the `--server` flag in `impact server start` and `impact trace` to override.
 
 ## Configuration
 
@@ -138,9 +138,9 @@ Pattern B: STEP 0 → 1 → 2 → 3 → 4 → (4.5) → 5 → 6
 |------|-------------|
 | STEP 0 | Spec → code mapping (Pattern B only) |
 | STEP 1 | Parse request, identify entry point, detect language |
-| STEP 2 | Start lsprefs daemon with appropriate LSP server |
-| STEP 3 | Generate config.json for lsprefs-walk |
-| STEP 4 | Run BFS traversal via lsprefs-walk |
+| STEP 2 | Start impact server daemon with appropriate LSP server |
+| STEP 3 | Generate config.json for impact trace |
+| STEP 4 | Run BFS traversal via impact trace |
 | STEP 4.5 | Merge multiple evidence files (multi-origin only) |
 | STEP 5 | Analyze evidence.tsv, generate summary.md |
 | STEP 6 | Report results to user |
@@ -149,8 +149,7 @@ Pattern B: STEP 0 → 1 → 2 → 3 → 4 → (4.5) → 5 → 6
 
 | Tool | Install Method | Purpose |
 |------|---------------|---------|
-| `lsprefs` | `go install github.com/skaji18/devtools/lsprefs@latest` | LSP reference/definition daemon |
-| `lsprefs-walk` | `go install github.com/skaji18/devtools/lsprefs-walk@latest` | BFS impact traversal |
+| `impact` | `go install github.com/skaji18/devtools/cmd/impact@latest` | Unified CLI (LSP queries, BFS traversal, merge, graph) |
 | `intelephense` | `npm install -g intelephense` | PHP LSP server |
 | `typescript-language-server` | `npm install -g typescript-language-server typescript` | JS/TS LSP server |
 | `rg` (ripgrep) | [github.com/BurntSushi/ripgrep](https://github.com/BurntSushi/ripgrep) | Code search |
