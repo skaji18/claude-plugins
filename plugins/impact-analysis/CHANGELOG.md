@@ -15,7 +15,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Plugin README in English and Japanese
 - Pattern B: Spec origin analysis (STEP 0 — natural language to code mapping)
 - Pattern C: Cross-language tracing across PHP and JS/TS via API endpoints
-- Multiple origin support with `lsprefs-walk merge`
+- Multiple origin support with `impact merge`
 - `--resolve-implementations` flag for interface method tracing
 - `.impact-profile.json` for project-specific configuration
 - `confidence` and `severity` columns in evidence.tsv
@@ -24,6 +24,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Migrated CLI from `lsprefs` + `lsprefs-walk` to unified `impact` command (`go install github.com/skaji18/devtools/cmd/impact@latest`)
 - Migrated skill definition from `skills/impact-analysis/SKILL.md` to `commands/impact-analysis.md` for official Claude Code plugin schema compliance
 - Simplified `plugin.json` to match official schema
 - Updated `hooks.json` to official schema format

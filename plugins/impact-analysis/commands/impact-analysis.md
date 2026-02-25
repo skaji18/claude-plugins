@@ -348,7 +348,7 @@ Write ツールで以下の JSON を生成してください。
 
 **パス解決の注意**:
 - `root`: **STEP 2 の `impact server start --root` と同じ値にすること**。最も安全なのは絶対パス
-- `lsprefs`: `impact` と指定（`go install` で PATH に入っている前提）
+- `lsprefs`: `"impact"` と指定（フィールド名は旧名だが Go 側の JSON tag に由来するため変更不可。値は `impact` バイナリのパスまたはコマンド名）
 - `out`: 絶対パス推奨
 - `server`: LSP サーバーコマンド。PATH に入っていれば短縮名で可
 
