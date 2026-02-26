@@ -1,0 +1,96 @@
+tools:
+  # 単純エントリ (allow)
+  ls: "allow"
+  cat: "allow"
+  head: "allow"
+  tail: "allow"
+  wc: "allow"
+  sort: "allow"
+  uniq: "allow"
+  cut: "allow"
+  grep: "allow"
+  rg: "allow"
+  sed: "allow"
+  awk: "allow"
+  jq: "allow"
+  yq: "allow"
+  echo: "allow"
+  printf: "allow"
+  date: "allow"
+  basename: "allow"
+  dirname: "allow"
+  realpath: "allow"
+  stat: "allow"
+  file: "allow"
+  which: "allow"
+  type: "allow"
+  whoami: "allow"
+  uname: "allow"
+  hostname: "allow"
+  pwd: "allow"
+  tree: "allow"
+  du: "allow"
+  df: "allow"
+  make: "allow"
+  cargo: "allow"
+  gcc: "allow"
+  go: "allow"
+  rustc: "allow"
+  diff: "allow"
+
+  # 単純エントリ (ask)
+  curl: "ask"
+  wget: "ask"
+  ssh: "ask"
+  scp: "ask"
+  rsync: "ask"
+  nc: "ask"
+  rm: "ask"
+  rmdir: "ask"
+  mv: "ask"
+  cp: "ask"
+  find: "ask"
+  chmod: "ask"
+  chown: "ask"
+  pip: "ask"
+  pip3: "ask"
+
+  # 複雑エントリ (マップ)
+  git:
+    ask: ["push", "clean", "filter-branch", "rebase", "reset"]
+    dangerous_flags: ["--force", "-f", "--hard", "-D", "--no-verify"]
+    default: "allow"
+
+  docker:
+    ask: ["rm", "kill", "exec", "run", "build", "push", "system prune"]
+    dangerous_flags: ["--force", "-f"]
+    default: "ask"
+
+  gh:
+    ask: ["pr merge", "pr close", "pr reopen", "issue close", "issue delete", "repo delete", "repo archive", "release delete", "release create", "run cancel"]
+    default: "ask"
+
+  npm:
+    ask: ["install", "publish", "uninstall"]
+    dangerous_flags: ["--force"]
+    default: "ask"
+
+pipe_deny_right:
+  - "bash"
+  - "sh"
+  - "zsh"
+  - "ksh"
+  - "fish"
+  - "csh"
+  - "tcsh"
+  - "python"
+  - "python3"
+  - "perl"
+  - "ruby"
+  - "node"
+  - "eval"
+  - "exec"
+  - "xargs"
+
+allowed_dirs_extra: []
+audit_log_path: ""

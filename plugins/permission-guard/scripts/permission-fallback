@@ -3,8 +3,8 @@
 .claude/hooks/permission-fallback
 
 PermissionRequest fallback hook (Python reimplementation)
-Automatically approves PROJECT_DIR-scoped execution (+ allowed_dirs_extra) with 8-phase validation.
-New Phase 7B2: Subcommand rejection for destructive operations.
+Automatically approves PROJECT_DIR-scoped execution (+ allowed_dirs_extra) with validation.
+Config redesign: tools unified structure + defaults.yaml (cmd_093)
 """
 
 import sys
@@ -56,411 +56,78 @@ def reject(reason="unknown"):
     raise RejectException(reason)
 
 
-def load_config():
-    """Load permission-config.yaml with 4-layer merge (Plugin + Project + Local)."""
+# --- Configuration: defaults + user merge ---
+
+NEVER_SAFE = {"sudo", "su"}
+
+
+def load_defaults():
+    """Load plugin defaults.yaml."""
     plugin_root = os.environ.get("CLAUDE_PLUGIN_ROOT", "")
-
     if plugin_root:
-        # Plugin mode: base config is in plugin's config/ directory
-        base_config_path = os.path.join(plugin_root, "config", "permission-config.yaml")
-    else:
-        # Inline mode: config is adjacent to this script (.claude/hooks/)
-        base_config_path = os.path.join(os.path.dirname(__file__), "permission-config.yaml")
+        defaults_path = os.path.join(plugin_root, "config", "defaults.yaml")
+        if os.path.exists(defaults_path):
+            with open(defaults_path) as f:
+                return yaml.safe_load(f) or {}
+    return {}
 
-    # Layer 2: Project-level config (NEW)
-    project_config_path = os.path.join(PROJECT_DIR, ".claude", "permission-config.yaml")
-    # Layer 3: Local overlay (unchanged behavior)
-    local_path = os.path.join(PROJECT_DIR, "local", "hooks", "permission-config.yaml")
 
-    # Security floor: items that can NEVER be removed
-    FLOOR_ALWAYS_ASK = {"sudo", "su", "rm", "rmdir"}
-    FLOOR_SUBCOMMAND_ASK = {
-        "git:push", "git:reset:--hard", "gh:pr:merge",
+def load_user_config():
+    """Load user config from $CLAUDE_PROJECT_DIR/.claude/permission-guard.yaml"""
+    project_dir = os.environ.get("CLAUDE_PROJECT_DIR", "")
+    if not project_dir:
+        return {}
+    user_config_path = os.path.join(project_dir, ".claude", "permission-guard.yaml")
+    if os.path.exists(user_config_path):
+        with open(user_config_path) as f:
+            return yaml.safe_load(f) or {}
+    return {}
+
+
+def merge_config(defaults, user_config):
+    """Merge defaults + user additions - user removals."""
+    effective_tools = dict(defaults.get("tools", {}))
+
+    # tools_add
+    for name, val in user_config.get("tools_add", {}).items():
+        if isinstance(val, str):
+            effective_tools[name] = val
+        else:
+            existing = effective_tools.get(name, {})
+            if isinstance(existing, str):
+                existing = {"default": existing}
+            for k, v in val.items():
+                if k in ("ask", "dangerous_flags") and k in existing:
+                    existing[k] = list(set(existing[k]) | set(v))
+                else:
+                    existing[k] = v
+            effective_tools[name] = existing
+
+    # tools_remove
+    for name in user_config.get("tools_remove", []):
+        effective_tools.pop(name, None)
+
+    # pipe_deny_right
+    effective_pipe = list(set(
+        defaults.get("pipe_deny_right", [])
+        + user_config.get("pipe_deny_right_add", [])
+    ))
+
+    return {
+        "tools": effective_tools,
+        "pipe_deny_right": effective_pipe,
+        "allowed_dirs_extra": user_config.get("allowed_dirs_extra",
+                               defaults.get("allowed_dirs_extra", [])),
+        "audit_log_path": user_config.get("audit_log_path",
+                           defaults.get("audit_log_path", "")),
     }
 
-    # FROZEN: interpreters key cannot be overridden (Fix 1)
-    FROZEN_KEYS = {"interpreters"}
 
-    # Hardcoded defaults (unchanged from current code)
-    default_config = {
-        "interpreters": {
-            "python3": {
-                "safe_flags": ["u", "B", "s", "S", "v", "b", "q", "O", "I", "E", "P", "R"],
-                "dangerous_flags": ["c", "e", "m"],
-                "dangerous_long_flags": ["--command", "--eval"]
-            },
-            "bash": {
-                "safe_flags": ["n", "x", "e", "u", "v", "E", "f", "r"],
-                "dangerous_flags": ["c", "i"],
-                "dangerous_long_flags": ["--init-file", "--rcfile"]
-            },
-            "sh": {
-                "safe_flags": ["x", "e", "u", "v", "E", "f", "r"],
-                "dangerous_flags": ["c", "i"],
-                "dangerous_long_flags": ["--init-file", "--rcfile"]
-            },
-            "node": {
-                "safe_flags": ["v"],
-                "dangerous_flags": ["e", "p"],
-                "dangerous_long_flags": ["--eval", "--print", "--require", "--input-type"]
-            },
-            "perl": {
-                "safe_flags": ["w", "T", "c", "v"],
-                "dangerous_flags": ["e", "E"],
-                "dangerous_long_flags": []
-            },
-            "ruby": {
-                "safe_flags": ["w", "d", "v"],
-                "dangerous_flags": ["e"],
-                "dangerous_long_flags": ["--eval"]
-            },
-            "php": {
-                "safe_flags": ["v", "i", "m"],
-                "dangerous_flags": ["r"],
-                "dangerous_long_flags": ["--run"]
-            }
-        },
-        "interpreters_extra": {},
-        "always_ask": [
-            "curl", "wget", "ssh", "scp", "rsync", "nc",
-            "sudo", "su",
-            "eval", "exec", "xargs", "env", "nohup", "timeout",
-            "busybox", "screen", "tmux", "script",
-            "pip", "pip3", "npm", "apt", "apt-get",
-            "rm", "rmdir", "mv", "cp",
-            "python", "python2",                          # F-003
-            "dash", "zsh", "ksh", "fish", "csh", "tcsh",  # F-004
-            "command",                                      # F-010
-            "find", "chmod", "chown"                        # NEW-6
-        ],
-        "known_safe": [
-            "ls", "cat", "head", "tail", "wc", "sort", "uniq", "cut", "paste",
-            "tr", "tee", "diff", "cmp", "comm",
-            "grep", "rg", "fd", "fzf", "ag", "ack",
-            "sed", "awk", "jq", "yq",
-            "date", "cal", "echo", "printf", "true", "false", "test", "[",
-            "basename", "dirname", "realpath", "readlink",
-            "stat", "file", "which", "type",
-            "whoami", "id", "uname", "hostname", "pwd",
-            "printenv",
-            "tree", "du", "df", "free", "uptime",
-            "less", "more",
-            "xxd", "od", "hexdump",
-            "md5sum", "sha256sum", "base64",
-            "column", "expand", "unexpand", "fold", "fmt", "nl", "rev",
-            "seq", "yes",
-            "git", "gh",
-            "make", "cargo", "gcc", "g++", "cc", "c++",
-            "go", "rustc", "javac", "java",
-            "docker", "kubectl",
-            "npx", "yarn", "pnpm",
-        ],
-        "known_safe_extra": [],
-        "subcommand_rules": {
-            "git": {
-                "allow": [
-                    "status", "log", "diff", "show", "branch", "tag", "remote",
-                    "stash", "describe", "shortlog", "blame", "bisect",
-                    "reflog", "rev-parse", "rev-list", "ls-files", "ls-tree",
-                    "ls-remote", "cat-file", "for-each-ref", "name-rev",
-                    "config", "var", "help", "version",
-                    "count-objects", "fsck", "verify-pack",
-                    "notes", "grep", "log", "whatchanged",
-                    "add", "commit", "fetch", "clone", "init",
-                    "mv", "rm", "switch", "worktree",
-                    "cherry-pick", "apply", "am",
-                    "submodule", "sparse-checkout",
-                    "archive", "bundle",
-                ],
-                "ask": [
-                    "push", "pull", "merge", "rebase", "reset",
-                    "checkout:.", "restore:.",
-                    "clean",
-                    "stash:drop", "stash:clear",
-                    "branch:-D", "tag:-d",
-                    "filter-branch",
-                    "gc",
-                ],
-                "default_action": "ask"
-            },
-            "docker": {
-                "allow": [
-                    "ps", "images", "logs", "inspect", "info", "version",
-                    "stats", "top", "port", "diff", "history",
-                    "network:ls", "network:inspect",
-                    "volume:ls", "volume:inspect",
-                    "compose:ps", "compose:logs", "compose:config",
-                ],
-                "ask": [
-                    "run", "exec", "rm", "rmi", "stop", "kill",
-                    "build", "push", "pull",
-                    "system:prune",
-                    "compose:up", "compose:down", "compose:build",
-                ],
-                "default_action": "ask"
-            },
-            "gh": {
-                "allow": [
-                    "pr:list", "pr:view", "pr:status", "pr:checks", "pr:diff",
-                    "issue:list", "issue:view", "issue:status",
-                    "repo:list", "repo:view",
-                    "run:list", "run:view",
-                    "release:list", "release:view",
-                    "api",
-                    "auth:status",
-                    "status",
-                ],
-                "ask": [
-                    "pr:merge", "pr:close", "pr:reopen",
-                    "issue:close", "issue:delete",
-                    "repo:delete", "repo:archive",
-                    "release:delete", "release:create",
-                    "run:cancel",
-                ],
-                "default_action": "ask"
-            }
-        },
-        "subcommand_ask": [
-            "git:push",
-            "git:clean",
-            "git:reset:--hard",
-            "git:checkout:.",
-            "git:restore:.",
-            "gh:pr:merge",
-            "gh:repo:delete",
-            "gh:repo:archive",
-            "gh:release:delete",
-            "git:stash:drop",       # NEW-5
-            "git:stash:clear",      # NEW-5
-            "git:rebase",           # NEW-5
-            "git:branch:-D",        # NEW-5
-            "git:tag:-d",           # NEW-5
-            "git:filter-branch"     # NEW-5
-        ],
-        "allowed_dirs_extra": []
-    }
-
-    # Layer 1: Load base config (overrides defaults)
-    if os.path.exists(base_config_path):
-        try:
-            with open(base_config_path, 'r') as f:
-                user_config = yaml.safe_load(f)
-                if user_config:
-                    for key in user_config:
-                        default_config[key] = user_config[key]
-        except (Exception) as e:
-            if DEBUG:
-                print(f"Config load failed: {e}, using defaults", file=sys.stderr)
-            reject("config_parse_error")
-
-    # Layer 2: Merge project-level config (if exists)
-    if os.path.exists(project_config_path):
-        try:
-            with open(project_config_path, 'r') as f:
-                project_conf = yaml.safe_load(f)
-        except (Exception) as e:
-            if DEBUG:
-                print(f"Project config load failed: {e}, ignoring overlay", file=sys.stderr)
-            return default_config
-
-        if not isinstance(project_conf, dict):
-            if DEBUG:
-                print(f"Project config is not a YAML mapping, ignoring overlay", file=sys.stderr)
-            return default_config
-
-        # Skip frozen keys entirely
-        for key in FROZEN_KEYS:
-            if key in project_conf:
-                if DEBUG:
-                    print(
-                        f"WARNING: '{key}' is frozen, cannot be overridden. Ignoring.",
-                        file=sys.stderr,
-                    )
-
-        # always_ask: union + floor enforced + null safety
-        if 'always_ask' in project_conf:
-            merged_set = set(default_config.get('always_ask', []))
-            proj_value = project_conf['always_ask']
-            if isinstance(proj_value, list):
-                merged_set |= set(proj_value)
-            elif proj_value is not None:
-                if DEBUG:
-                    print(
-                        f"WARNING: always_ask expected array, got "
-                        f"{type(proj_value).__name__}. Ignoring.",
-                        file=sys.stderr,
-                    )
-            merged_set |= FLOOR_ALWAYS_ASK
-            default_config['always_ask'] = sorted(merged_set)
-
-        # subcommand_ask: union + floor enforced + null safety
-        if 'subcommand_ask' in project_conf:
-            merged_set = set(default_config.get('subcommand_ask', []))
-            proj_value = project_conf['subcommand_ask']
-            if isinstance(proj_value, list):
-                merged_set |= set(proj_value)
-            elif proj_value is not None:
-                if DEBUG:
-                    print(
-                        f"WARNING: subcommand_ask expected array, got "
-                        f"{type(proj_value).__name__}. Ignoring.",
-                        file=sys.stderr,
-                    )
-            merged_set |= FLOOR_SUBCOMMAND_ASK
-            default_config['subcommand_ask'] = sorted(merged_set)
-
-        # allowed_dirs_extra: union (append-only) + null safety
-        if 'allowed_dirs_extra' in project_conf:
-            base_dirs = set(default_config.get('allowed_dirs_extra', []))
-            proj_value = project_conf['allowed_dirs_extra']
-            if isinstance(proj_value, list):
-                base_dirs |= set(proj_value)
-            elif proj_value is not None:
-                if DEBUG:
-                    print(
-                        f"WARNING: allowed_dirs_extra expected array, got "
-                        f"{type(proj_value).__name__}. Ignoring.",
-                        file=sys.stderr,
-                    )
-            default_config['allowed_dirs_extra'] = sorted(base_dirs)
-
-        # known_safe_extra: union (append-only, cannot remove from base known_safe)
-        if 'known_safe_extra' in project_conf:
-            base_extra = set(default_config.get('known_safe_extra', []))
-            proj_value = project_conf['known_safe_extra']
-            if isinstance(proj_value, list):
-                base_extra |= set(proj_value)
-            elif proj_value is not None:
-                if DEBUG:
-                    print(
-                        f"WARNING: known_safe_extra expected array, got "
-                        f"{type(proj_value).__name__}. Ignoring.",
-                        file=sys.stderr,
-                    )
-            default_config['known_safe_extra'] = sorted(base_extra)
-
-        # interpreters_extra: merge (additive only, cannot override base interpreters)
-        if 'interpreters_extra' in project_conf:
-            proj_value = project_conf['interpreters_extra']
-            if isinstance(proj_value, dict):
-                base_extra = default_config.get('interpreters_extra', {})
-                for k, v in proj_value.items():
-                    if isinstance(v, dict):
-                        base_extra[k] = v
-                default_config['interpreters_extra'] = base_extra
-            elif proj_value is not None:
-                if DEBUG:
-                    print(
-                        f"WARNING: interpreters_extra expected mapping, got "
-                        f"{type(proj_value).__name__}. Ignoring.",
-                        file=sys.stderr,
-                    )
-
-    # Layer 3: Merge local overlay (if exists)
-    if os.path.exists(local_path):
-        try:
-            with open(local_path, 'r') as f:
-                local = yaml.safe_load(f)
-        except (Exception) as e:
-            if DEBUG:
-                print(f"Local config load failed: {e}, ignoring overlay", file=sys.stderr)
-            return default_config
-
-        if not isinstance(local, dict):
-            if DEBUG:
-                print(f"Local config is not a YAML mapping, ignoring overlay", file=sys.stderr)
-            return default_config
-
-        # Fix 1: Skip frozen keys entirely
-        for key in FROZEN_KEYS:
-            if key in local:
-                if DEBUG:
-                    print(
-                        f"WARNING: '{key}' is frozen, cannot be overridden. Ignoring.",
-                        file=sys.stderr,
-                    )
-
-        # always_ask: union + floor enforced + null safety (Fix 3)
-        if 'always_ask' in local:
-            merged_set = set(default_config.get('always_ask', []))
-            local_value = local['always_ask']
-            if isinstance(local_value, list):
-                merged_set |= set(local_value)
-            elif local_value is not None:
-                if DEBUG:
-                    print(
-                        f"WARNING: always_ask expected array, got "
-                        f"{type(local_value).__name__}. Ignoring.",
-                        file=sys.stderr,
-                    )
-            # null is treated as empty (no additions, no crash)
-            merged_set |= FLOOR_ALWAYS_ASK
-            default_config['always_ask'] = sorted(merged_set)
-
-        # subcommand_ask: union + floor enforced + null safety (Fix 3)
-        if 'subcommand_ask' in local:
-            merged_set = set(default_config.get('subcommand_ask', []))
-            local_value = local['subcommand_ask']
-            if isinstance(local_value, list):
-                merged_set |= set(local_value)
-            elif local_value is not None:
-                if DEBUG:
-                    print(
-                        f"WARNING: subcommand_ask expected array, got "
-                        f"{type(local_value).__name__}. Ignoring.",
-                        file=sys.stderr,
-                    )
-            merged_set |= FLOOR_SUBCOMMAND_ASK
-            default_config['subcommand_ask'] = sorted(merged_set)
-
-        # allowed_dirs_extra: union (append-only) + null safety (Fix 3)
-        if 'allowed_dirs_extra' in local:
-            base_dirs = set(default_config.get('allowed_dirs_extra', []))
-            local_value = local['allowed_dirs_extra']
-            if isinstance(local_value, list):
-                base_dirs |= set(local_value)
-            elif local_value is not None:
-                if DEBUG:
-                    print(
-                        f"WARNING: allowed_dirs_extra expected array, got "
-                        f"{type(local_value).__name__}. Ignoring.",
-                        file=sys.stderr,
-                    )
-            default_config['allowed_dirs_extra'] = sorted(base_dirs)
-
-        # known_safe_extra: union (append-only)
-        if 'known_safe_extra' in local:
-            base_extra = set(default_config.get('known_safe_extra', []))
-            local_value = local['known_safe_extra']
-            if isinstance(local_value, list):
-                base_extra |= set(local_value)
-            elif local_value is not None:
-                if DEBUG:
-                    print(
-                        f"WARNING: known_safe_extra expected array, got "
-                        f"{type(local_value).__name__}. Ignoring.",
-                        file=sys.stderr,
-                    )
-            default_config['known_safe_extra'] = sorted(base_extra)
-
-        # interpreters_extra: merge (additive only)
-        if 'interpreters_extra' in local:
-            local_value = local['interpreters_extra']
-            if isinstance(local_value, dict):
-                base_extra = default_config.get('interpreters_extra', {})
-                for k, v in local_value.items():
-                    if isinstance(v, dict):
-                        base_extra[k] = v
-                default_config['interpreters_extra'] = base_extra
-            elif local_value is not None:
-                if DEBUG:
-                    print(
-                        f"WARNING: interpreters_extra expected mapping, got "
-                        f"{type(local_value).__name__}. Ignoring.",
-                        file=sys.stderr,
-                    )
-
-    return default_config
+def load_config():
+    """Load effective config (defaults merged with user config)."""
+    defaults = load_defaults()
+    user_config = load_user_config()
+    return merge_config(defaults, user_config)
 
 
 def canonicalize_path(path):
@@ -641,98 +308,8 @@ def phase_2_shell_syntax(command):
         reject("P2:quoted_command_name")
 
 
-def phase_3_parse_command(command, config):
-    """Phase 3: Split into words, identify interpreter."""
-    # Split on whitespace (DO NOT use shlex.split - it processes quotes)
-    words = command.split()
-
-    if not words:
-        reject("P3:empty_words")
-
-    interpreter = words[0]
-    script_path = ""
-
-    # Check if interpreter is in known interpreters (case-sensitive)
-    # Also check interpreters_extra for user-defined interpreters
-    interpreters_list = list(config["interpreters"].keys())
-    interpreters_extra = config.get("interpreters_extra", {})
-    is_known_interpreter = interpreter in interpreters_list
-
-    # If not in base interpreters, check interpreters_extra
-    if not is_known_interpreter and interpreter in interpreters_extra:
-        # Merge extra interpreter config into main interpreters for Phase 4 use
-        config["interpreters"][interpreter] = interpreters_extra[interpreter]
-        is_known_interpreter = True
-
-    if not is_known_interpreter:
-        # Check for shell builtins (source, ., exec, eval)
-        # These should be rejected as they bypass script containment checks
-        if interpreter in ["source", ".", "exec", "eval"]:
-            reject("P3:shell_builtin")
-
-        # Direct execution: first word is the script path
-        script_path = interpreter
-
-    return words, interpreter, script_path, is_known_interpreter
-
-
-def phase_4_normalize_flags(words, interpreter, script_path, is_known_interpreter, config):
-    """Phase 4: Classify flags, find script path for known interpreters."""
-    # Only applies when a known interpreter is used
-    if not is_known_interpreter or script_path:
-        return script_path
-
-    interp_config = config["interpreters"].get(interpreter, {})
-    safe_flags = interp_config.get("safe_flags", [])
-    danger_flags = interp_config.get("dangerous_flags", [])
-    danger_long_flags = interp_config.get("dangerous_long_flags", [])
-
-    idx = 1
-    while idx < len(words):
-        word = words[idx]
-
-        if word.startswith("-"):
-            # Check for dangerous long flags (F-008: prefix match with =value)
-            for dlf in danger_long_flags:
-                if word == dlf or word.startswith(dlf + "="):
-                    reject("P4:dangerous_flag")
-
-            # Check for dangerous single-char flags (prefix match: -c, -ccode, etc.)
-            for flag_char in danger_flags:
-                if word == f"-{flag_char}" or word.startswith(f"-{flag_char}"):
-                    reject("P4:dangerous_flag")
-
-            # Compound flag decomposition: -xeu -> check x, e, u individually
-            # Only for short flags (not --long-flags)
-            if len(word) >= 2 and not word.startswith("--"):
-                # Step 1: Check dangerous flags first (priority)
-                for ch in word[1:]:
-                    if ch in danger_flags:
-                        reject("P4:dangerous_flag")
-                # Step 2: Verify all chars are safe
-                all_safe = True
-                for ch in word[1:]:
-                    if ch not in safe_flags:
-                        all_safe = False
-                        break
-                if all_safe:
-                    idx += 1
-                    continue
-
-            # Unknown flag - fail closed
-            reject("P4:unknown_flag")
-        else:
-            # Positional argument = script path
-            script_path = word
-            break
-
-        idx += 1
-
-    return script_path
-
-
 def phase_5_normalize_path(script_path):
-    """Phase 5: Resolve to absolute path."""
+    """Phase 5: Resolve to absolute path and check project containment."""
     if not script_path:
         reject("P4:no_script_path")
 
@@ -754,19 +331,12 @@ def phase_5_normalize_path(script_path):
     return abs_path
 
 
-def phase_6_project_check(abs_path, is_known_interpreter, config, words):
+def phase_6_project_check(abs_path, config):
     """Phase 6: Check PROJECT_DIR containment (+ allowed_dirs_extra).
 
-    Auto-approves only:
-      - Known interpreter + script path in PROJECT_DIR or allowed_dirs_extra
-      - Direct path execution (words[0] contains '/') in PROJECT_DIR or allowed_dirs_extra
-    Plain command names (e.g. 'rm', 'curl') fall through to Phase 7.
+    Path containment check only (interpreter判定部分は削除済み).
+    Returns True if contained, False otherwise.
     """
-    # Only auto-approve interpreters or actual path-based execution
-    is_path_execution = "/" in words[0]
-    if not is_known_interpreter and not is_path_execution:
-        return False  # Plain command name → Phase 7 handles it
-
     canon_abs = canonicalize_path(abs_path)
 
     # Check 1: PROJECT_DIR containment
@@ -774,7 +344,7 @@ def phase_6_project_check(abs_path, is_known_interpreter, config, words):
     project_prefix = canon_project + "/"
 
     if canon_abs == canon_project or canon_abs.startswith(project_prefix):
-        allow("P6:project_dir_match")
+        return True
 
     # Check 2: allowed_dirs_extra containment
     allowed_dirs_extra = config.get("allowed_dirs_extra", [])
@@ -786,292 +356,12 @@ def phase_6_project_check(abs_path, is_known_interpreter, config, words):
             continue
         extra_prefix = canon_extra + "/"
         if canon_abs == canon_extra or canon_abs.startswith(extra_prefix):
-            allow("P6:allowed_dir_match")
+            return True
 
-    # Path is outside project and allowed_dirs_extra
-    if is_known_interpreter:
-        reject("P6:not_in_allowed_dir")
-
-    # Non-interpreter path outside project: fall through to Phase 7
     return False
 
 
-def phase_7b2_subcommand_check(words, config):
-    """Phase 7B2: Subcommand evaluation with safe-enumeration (subcommand_rules)
-    and legacy deny rules (subcommand_ask)."""
-    subcommand_ask = config.get("subcommand_ask", [])
-    subcommand_rules = config.get("subcommand_rules", {})
-
-    if not subcommand_ask and not subcommand_rules:
-        return  # No rules configured
-
-    # Extract command name (basename)
-    cmd_name = os.path.basename(words[0])
-
-    # Only apply subcommand checks if the command is not path-like
-    first_word = words[0]
-    if "/" in first_word:
-        return
-
-    # Extract subcommands and arguments (skip flags)
-    # F-002: Track leading flags (flags before first subcommand) for fail-closed
-    has_leading_flags = False
-    subcommands = []
-    all_args = []
-
-    for i in range(1, len(words)):
-        word = words[i]
-        all_args.append(word)
-        if word.startswith("-"):
-            if not subcommands:  # Flag before any subcommand
-                has_leading_flags = True
-        else:
-            # F-007: Normalize path-like subcommand arguments
-            subcommands.append(os.path.normpath(word))
-
-    # F-002: If leading flags exist and this command has rules, fail closed
-    cmd_has_rules = (
-        cmd_name in subcommand_rules
-        or any(rule.split(":")[0] == cmd_name for rule in subcommand_ask)
-    )
-    if has_leading_flags and cmd_has_rules:
-        reject(f"P7B2:leading_flags:{cmd_name}")
-
-    # --- New: subcommand_rules (safe-enumeration) ---
-    if cmd_name in subcommand_rules:
-        rules = subcommand_rules[cmd_name]
-        allow_list = rules.get("allow", [])
-        ask_list = rules.get("ask", [])
-        default_action = rules.get("default_action", "ask")
-
-        if not subcommands:
-            # No subcommand provided (e.g., bare "git") - allow (shows help)
-            return
-
-        # Build the subcommand key for matching
-        # Support nested subcommands: "stash:drop" matches subcommands ["stash", "drop"]
-        first_sub = subcommands[0]
-        compound_key = first_sub
-        if len(subcommands) > 1:
-            compound_key = first_sub + ":" + subcommands[1]
-
-        # Check ask list first (explicit deny takes priority)
-        for ask_entry in ask_list:
-            ask_parts = ask_entry.split(":")
-            if len(ask_parts) == 1:
-                # Simple subcommand match: "push", "clean", etc.
-                if first_sub == ask_parts[0]:
-                    reject(f"P7B2:subcommand_rules_ask:{cmd_name}:{ask_entry}")
-            elif len(ask_parts) == 2:
-                # Compound match: "stash:drop", "branch:-D", "checkout:."
-                # First part matches subcommand, second part matches next subcommand or flag
-                if first_sub == ask_parts[0]:
-                    second = ask_parts[1]
-                    if second.startswith("-"):
-                        # Flag check: look for flag in all_args
-                        if second in all_args:
-                            reject(f"P7B2:subcommand_rules_ask:{cmd_name}:{ask_entry}")
-                    else:
-                        # Subcommand check: match second positional subcommand
-                        normalized_second = os.path.normpath(second)
-                        if len(subcommands) > 1 and subcommands[1] == normalized_second:
-                            reject(f"P7B2:subcommand_rules_ask:{cmd_name}:{ask_entry}")
-
-        # Check allow list
-        for allow_entry in allow_list:
-            allow_parts = allow_entry.split(":")
-            if len(allow_parts) == 1:
-                if first_sub == allow_parts[0]:
-                    return  # Allowed, continue to path checks
-            elif len(allow_parts) == 2:
-                if first_sub == allow_parts[0]:
-                    second = allow_parts[1]
-                    if second.startswith("-"):
-                        if second in all_args:
-                            return
-                    else:
-                        normalized_second = os.path.normpath(second)
-                        if len(subcommands) > 1 and subcommands[1] == normalized_second:
-                            return
-
-        # Not in allow or ask lists - apply default_action
-        if default_action == "ask":
-            reject(f"P7B2:subcommand_rules_default:{cmd_name}:{first_sub}")
-        # default_action == "allow" would fall through (allow)
-        return
-
-    # --- Legacy: subcommand_ask (danger-enumeration, backward compat) ---
-    for rule in subcommand_ask:
-        parts = rule.split(":")
-
-        if len(parts) < 2:
-            continue
-
-        rule_cmd = parts[0]
-        rule_subs = parts[1:]
-
-        if cmd_name != rule_cmd:
-            continue
-
-        # Match subcommands (F-009: separate sub_idx to avoid index confusion)
-        matched = True
-        sub_idx = 0
-        for rule_sub in rule_subs:
-            if rule_sub.startswith("-"):
-                if rule_sub not in all_args:
-                    matched = False
-                    break
-            else:
-                normalized_rule = os.path.normpath(rule_sub)
-                if sub_idx >= len(subcommands) or subcommands[sub_idx] != normalized_rule:
-                    matched = False
-                    break
-                sub_idx += 1
-
-        if matched:
-            reject(f"P7B2:subcommand_ask:{rule}")
-
-
-def phase_7_general_command(words, config):
-    """Phase 7: ALWAYS_ASK + path containment for non-interpreter commands."""
-    # Step 7A: Extract command name
-    cmd_name = os.path.basename(words[0])
-
-    if DEBUG:
-        print(f"P7A:cmd={cmd_name}", file=sys.stderr)
-
-    # Step 7A2: Reject case-mismatched interpreter names
-    # (e.g., PYTHON3, Python3, BASH, Bash should be rejected)
-    cmd_lower = cmd_name.lower()
-    interpreters_list = list(config["interpreters"].keys())
-    for interp in interpreters_list:
-        if cmd_lower == interp and cmd_name != interp:
-            reject(f"P7A2:case_mismatch:{cmd_name}")
-
-    # Step 7B: Check ALWAYS_ASK list (F-013: case-insensitive matching)
-    always_ask = config.get("always_ask", [])
-    always_ask_lower = {a.lower() for a in always_ask}
-    if cmd_name.lower() in always_ask_lower:
-        reject(f"P7B:always_ask:{cmd_name}")
-
-    # Step 7B2: Check subcommand deny rules (NEW PHASE)
-    phase_7b2_subcommand_check(words, config)
-
-    # Step 7B3: deny-by-default with known_safe check
-    # If command is NOT in known_safe + known_safe_extra, return ask
-    known_safe = set(config.get("known_safe", []))
-    known_safe_extra = set(config.get("known_safe_extra", []))
-    all_known_safe = known_safe | known_safe_extra
-    if cmd_name not in all_known_safe:
-        if DEBUG:
-            print(f"P7B3:deny_by_default:{cmd_name}", file=sys.stderr)
-        reject(f"P7B3:not_known_safe:{cmd_name}")
-
-    # Step 7C: Collect path candidates (ALL non-flag positional args)
-    # Changed from "/" heuristic to all-argument path candidacy.
-    # Non-path arguments (e.g., "status" in "git status") resolve to
-    # PROJECT_DIR/status which passes containment (harmless, no false rejection).
-    # NOTE: Flag arguments that are paths (e.g., git -C /path) are intentionally
-    # checked for containment. This is correct behavior (F-012).
-    path_args = []
-    past_dd = False  # past "--" marker
-
-    # Check words[0] first (for direct execution, this is the script path)
-    first_word = words[0]
-    if "/" in first_word:
-        path_args.append(first_word)
-
-    for i in range(1, len(words)):
-        word = words[i]
-
-        # End-of-options marker
-        if word == "--" and not past_dd:
-            past_dd = True
-            continue
-
-        # Skip flags (unless past --)
-        if word.startswith("-") and not past_dd:
-            continue
-
-        # Strip surrounding quotes
-        word_stripped = word
-        if len(word_stripped) >= 2:
-            if (word_stripped[0] == '"' and word_stripped[-1] == '"') or \
-               (word_stripped[0] == "'" and word_stripped[-1] == "'"):
-                word_stripped = word_stripped[1:-1]
-
-        # Detect URLs (contains ://)
-        if "://" in word_stripped:
-            reject(f"P7C:url_detected:{word_stripped}")
-
-        # ALL non-flag arguments are path candidates (no "/" filter)
-        path_args.append(word_stripped)
-
-    if DEBUG:
-        print(f"P7C:paths={' '.join(path_args) if path_args else 'none'}", file=sys.stderr)
-
-    # Step 7D: Check path containment
-    if not path_args:
-        # No positional arguments at all - allow (command with only flags)
-        if DEBUG:
-            print("P7D:allow:no_args", file=sys.stderr)
-        allow("P7:no_args")
-
-    # Check each path for project containment
-    allowed_dirs_extra = config.get("allowed_dirs_extra", [])
-
-    for idx, p7_path in enumerate(path_args):
-        # Resolve to absolute
-        if p7_path.startswith('/'):
-            p7_abs = canonicalize_path(p7_path)
-        else:
-            p7_abs = canonicalize_path(os.path.join(PROJECT_DIR, p7_path))
-
-        if not p7_abs:
-            reject("P7D:empty_abs")
-
-        # Check containment against project directory
-        p7_contained = False
-
-        project_prefix = PROJECT_DIR + "/"
-        if p7_abs == PROJECT_DIR or p7_abs.startswith(project_prefix):
-            p7_contained = True
-
-        # Check containment against extra allowed directories
-        if not p7_contained and allowed_dirs_extra:
-            for extra_dir in allowed_dirs_extra:
-                if not extra_dir:
-                    continue
-
-                extra_resolved = canonicalize_path(extra_dir)
-                if not extra_resolved:
-                    continue
-
-                extra_prefix = extra_resolved + "/"
-                if p7_abs == extra_resolved or p7_abs.startswith(extra_prefix):
-                    p7_contained = True
-                    break
-
-        if not p7_contained:
-            if DEBUG:
-                print(f"P7D:reject:outside={p7_abs}", file=sys.stderr)
-            reject(f"P7D:outside_project:{p7_abs}")
-
-    # All paths contained
-    if DEBUG:
-        print("P7D:allow:all_contained", file=sys.stderr)
-    allow("P7:all_contained")
-
-
 # --- Compound command validation (pipe/chain/redirect) ---
-
-DANGEROUS_PIPE_TARGETS = {
-    'bash', 'sh', 'zsh', 'ksh', 'fish', 'csh', 'tcsh',   # pipe-to-shell
-    'python', 'python3', 'perl', 'ruby', 'node',            # pipe-to-interpreter
-    'xargs',                                                  # 引数展開
-    'eval', 'exec', 'source',                               # シェルビルトイン
-}
-
 
 @dataclass
 class Segment:
@@ -1110,11 +400,70 @@ def split_compound(command: str) -> List[Segment]:
     return segments
 
 
-def is_dangerous_pipe(command: str) -> bool:
-    """パイプの右辺が危険なターゲットか判定。"""
+def is_dangerous_pipe(command: str, config) -> bool:
+    """パイプの右辺が危険なターゲットか判定（config参照）。"""
     first_word = command.strip().split()[0] if command.strip() else ""
     basename = first_word.split('/')[-1] if '/' in first_word else first_word
-    return basename in DANGEROUS_PIPE_TARGETS
+    return basename in config.get("pipe_deny_right", [])
+
+
+def validate_single_command(command, config):
+    """
+    Phase 3-7の統合検証。新tools構造を使用。
+    Returns: ("allow"|"ask"|"reject", reason)
+    """
+    if not command.strip():
+        return ("reject", "empty_segment")
+
+    words = command.strip().split()
+    cmd_name = words[0]
+
+    # パス付きコマンド（/usr/bin/git等）のbasename
+    cmd_basename = os.path.basename(cmd_name)
+
+    # NEVER_SAFE ハードコード
+    if cmd_basename in NEVER_SAFE:
+        return ("ask", f"never_safe:{cmd_basename}")
+
+    tools = config.get("tools", {})
+    tool_entry = tools.get(cmd_basename)
+
+    if tool_entry is None:
+        return ("ask", f"unknown_command:{cmd_basename}")
+
+    if isinstance(tool_entry, str):
+        # 単純エントリ: "allow" or "ask"
+        return (tool_entry, f"tools:{cmd_basename}")
+
+    # 複雑エントリ（マップ）
+    # 1. dangerous_flags チェック
+    dangerous_flags = tool_entry.get("dangerous_flags", [])
+    for word in words[1:]:
+        if word in dangerous_flags:
+            return ("ask", f"dangerous_flag:{cmd_basename}:{word}")
+        # 複合短フラグ分解 (-rf → -r, -f)
+        if word.startswith("-") and not word.startswith("--") and len(word) > 2:
+            for ch in word[1:]:
+                if f"-{ch}" in dangerous_flags:
+                    return ("ask", f"dangerous_flag:{cmd_basename}:-{ch}")
+
+    # 2. ask サブコマンド チェック（スペース区切り DSL）
+    ask_subs = tool_entry.get("ask", [])
+    subcommands = [w for w in words[1:] if not w.startswith("-")]
+    for ask_sub in ask_subs:
+        ask_parts = ask_sub.split()
+        if len(ask_parts) == 1:
+            if subcommands and subcommands[0] == ask_parts[0]:
+                return ("ask", f"ask_subcommand:{cmd_basename}:{ask_sub}")
+        elif len(ask_parts) == 2:
+            if (len(subcommands) >= 2
+                    and subcommands[0] == ask_parts[0]
+                    and subcommands[1] == ask_parts[1]):
+                return ("ask", f"ask_subcommand:{cmd_basename}:{ask_sub}")
+
+    # 3. default
+    default_action = tool_entry.get("default", "ask")
+    return (default_action, f"tools_default:{cmd_basename}")
 
 
 def validate_compound_command(command: str, config) -> Tuple[str, str]:
@@ -1126,7 +475,7 @@ def validate_compound_command(command: str, config) -> Tuple[str, str]:
     if len(pipe_parts) > 1:
         for part in pipe_parts[1:]:
             part = part.strip()
-            if is_dangerous_pipe(part):
+            if is_dangerous_pipe(part, config):
                 return ("reject", f"dangerous_pipe_target:{part.split()[0]}")
 
     segments = split_compound(command)
@@ -1159,23 +508,6 @@ def validate_compound_command(command: str, config) -> Tuple[str, str]:
 
     reasons = [r for _, r in results]
     return ("allow", f"compound:{'+'.join(reasons)}")
-
-
-def validate_single_command(command, config):
-    """Phase 3-7を1コマンドに対して実行。
-    Returns: ("allow", reason) or ("reject", reason)
-    """
-    try:
-        words, interpreter, script_path, is_known_interpreter = phase_3_parse_command(command, config)
-        script_path = phase_4_normalize_flags(words, interpreter, script_path, is_known_interpreter, config)
-        abs_path = phase_5_normalize_path(script_path)
-        phase_6_project_check(abs_path, is_known_interpreter, config, words)
-        phase_7_general_command(words, config)
-        return ("reject", "no_rule_matched")  # fail-closed
-    except AllowException as e:
-        return ("allow", e.reason)
-    except RejectException as e:
-        return ("reject", e.reason)
 
 
 def _get_audit_log_path():
