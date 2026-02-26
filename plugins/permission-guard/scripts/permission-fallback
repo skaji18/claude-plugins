@@ -12,6 +12,8 @@ import json
 import re
 import os
 from pathlib import PurePosixPath
+from dataclasses import dataclass
+from typing import List, Tuple
 
 import yaml
 
@@ -597,13 +599,13 @@ def phase_1_5_strip_safe_suffixes(command):
 
 def phase_2_shell_syntax(command):
     """Phase 2: Reject dangerous shell syntax."""
-    # Guard P1: Shell operators
-    if re.search(r'[;|&`]', command):
-        reject("P1:shell_operators")
+    # Guard P1: Backtick command substitution (pipe/chain/;/>/< handled by compound validation)
+    if '`' in command:
+        reject("P1:backtick_substitution")
 
-    # Guard P2: Redirections and process substitution
-    if re.search(r'[><]', command):
-        reject("P2:redirections")
+    # Guard P1b: Bare & (background execution) — && is handled by compound validation
+    if re.search(r'(?<!&)&(?!&)', command):
+        reject("P1:background_execution")
 
     # Guard P3: Command substitution $(...)
     if re.search(r'\$\(', command):
@@ -1061,6 +1063,104 @@ def phase_7_general_command(words, config):
     allow("P7:all_contained")
 
 
+# --- Compound command validation (pipe/chain/redirect) ---
+
+DANGEROUS_PIPE_TARGETS = {
+    'bash', 'sh', 'zsh', 'ksh', 'fish', 'csh', 'tcsh',   # pipe-to-shell
+    'python', 'python3', 'perl', 'ruby', 'node',            # pipe-to-interpreter
+    'xargs',                                                  # 引数展開
+    'eval', 'exec', 'source',                               # シェルビルトイン
+}
+
+
+@dataclass
+class Segment:
+    command: str        # 実行コマンド部分
+    seg_type: str       # "cmd", "redirect_out", "redirect_in"
+    redirect_path: str  # リダイレクト先/元パス（seg_type="cmd"の場合は空文字）
+
+
+def split_compound(command: str) -> List[Segment]:
+    """複合コマンドをセグメントに分割する。"""
+    segments = []
+
+    # リダイレクトを先に抽出（> file, >> file, < file）
+    # 2>&1, 2>/dev/null はPhase 1.5で処理済み
+    redirect_pattern = re.compile(r'\s(>>?|<)\s(\S+)')
+    redirects = redirect_pattern.findall(command)
+    cmd_without_redirect = redirect_pattern.sub('', command).strip()
+
+    # パイプ・チェイン分割（||, &&, |, ; を左から右に分割）
+    if re.search(r'\s(?:\|\||&&|[|;])\s', cmd_without_redirect):
+        parts = re.split(r'\s*(?:\|\||&&|[|;])\s*', cmd_without_redirect)
+        for part in parts:
+            part = part.strip()
+            if part:
+                segments.append(Segment(command=part, seg_type="cmd", redirect_path=""))
+    else:
+        segments.append(Segment(command=cmd_without_redirect, seg_type="cmd", redirect_path=""))
+
+    # リダイレクトセグメントを追加
+    for op, path in redirects:
+        if op in ('>', '>>'):
+            segments.append(Segment(command="", seg_type="redirect_out", redirect_path=path))
+        else:  # <
+            segments.append(Segment(command="", seg_type="redirect_in", redirect_path=path))
+
+    return segments
+
+
+def is_dangerous_pipe(command: str) -> bool:
+    """パイプの右辺が危険なターゲットか判定。"""
+    first_word = command.strip().split()[0] if command.strip() else ""
+    basename = first_word.split('/')[-1] if '/' in first_word else first_word
+    return basename in DANGEROUS_PIPE_TARGETS
+
+
+def validate_compound_command(command: str, config) -> Tuple[str, str]:
+    """複合コマンド（パイプ・チェイン・リダイレクト含む）を分割検証。
+    Returns: ("allow", reason) or ("reject"|"ask", reason)
+    """
+    # パイプの右辺の危険パターンを先にチェック
+    pipe_parts = re.split(r'\s*\|\s*', command)
+    if len(pipe_parts) > 1:
+        for part in pipe_parts[1:]:
+            part = part.strip()
+            if is_dangerous_pipe(part):
+                return ("reject", f"dangerous_pipe_target:{part.split()[0]}")
+
+    segments = split_compound(command)
+    results = []
+
+    for seg in segments:
+        if seg.seg_type == "cmd":
+            if not seg.command:
+                continue
+            decision, reason = validate_single_command(seg.command, config)
+            results.append((decision, reason))
+
+        elif seg.seg_type in ("redirect_out", "redirect_in"):
+            if seg.redirect_path == "/dev/null":
+                results.append(("allow", "redirect:/dev/null"))
+                continue
+            try:
+                phase_5_normalize_path(seg.redirect_path)
+                results.append(("allow", "redirect:project_contained"))
+            except Exception:
+                results.append(("reject", f"redirect:outside_project:{seg.redirect_path}"))
+
+    if not results:
+        return ("reject", "no_segments")
+
+    # 1つでもreject/ask → 最初のものを返す
+    non_allows = [(d, r) for d, r in results if d != "allow"]
+    if non_allows:
+        return non_allows[0]
+
+    reasons = [r for _, r in results]
+    return ("allow", f"compound:{'+'.join(reasons)}")
+
+
 def validate_single_command(command, config):
     """Phase 3-7を1コマンドに対して実行。
     Returns: ("allow", reason) or ("reject", reason)
@@ -1183,14 +1283,24 @@ def main():
         output_deny(e.reason)
         return
 
-    # Phase 3-7 (validate_single_command経由)
-    decision, reason = validate_single_command(command, config)
+    # 複合コマンド検出（Phase 2通過後）
+    # |, ;, ||, && は空白なしでも複合コマンドとして扱う（セキュリティ強化）
+    # リダイレクト >, <, >> は空白あり時のみ（パス文字との混同を避ける）
+    is_compound = bool(re.search(r'(\|\||&&|[|;])|[ \t](>>?|<)[ \t]', command))
+
+    # Phase 3-7
+    if is_compound:
+        decision, reason = validate_compound_command(command, config)
+    else:
+        decision, reason = validate_single_command(command, config)
+
     if decision == "allow":
         output_allow(reason)
     else:
         # reasonで deny vs ask を分岐
-        deny_reasons = {"null_byte", "json_error", "empty_command", "control_char", "unicode_whitespace", "unknown_tool"}
-        if reason in deny_reasons:
+        deny_reasons = {"null_byte", "json_error", "empty_command", "control_char",
+                        "unicode_whitespace", "unknown_tool", "no_segments"}
+        if reason.startswith("dangerous_pipe_target:") or reason in deny_reasons:
             output_deny(reason)
         else:
             output_ask(reason)
