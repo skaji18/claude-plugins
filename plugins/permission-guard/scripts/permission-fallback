@@ -22,7 +22,8 @@ class RejectException(Exception):
 
 
 class AllowException(Exception):
-    pass
+    def __init__(self, reason="phase_passed"):
+        self.reason = reason
 
 # --- Configuration ---
 def _detect_project_dir():
@@ -42,10 +43,11 @@ def _detect_project_dir():
 
 PROJECT_DIR = _detect_project_dir()
 DEBUG = os.getenv("PERMISSION_DEBUG", "0") == "1"
+_current_command = ""  # グローバル初期化
 
 
-def allow():
-    raise AllowException()
+def allow(reason="phase_passed"):
+    raise AllowException(reason)
 
 
 def reject(reason="unknown"):
@@ -770,7 +772,7 @@ def phase_6_project_check(abs_path, is_known_interpreter, config, words):
     project_prefix = canon_project + "/"
 
     if canon_abs == canon_project or canon_abs.startswith(project_prefix):
-        allow()
+        allow("P6:project_dir_match")
 
     # Check 2: allowed_dirs_extra containment
     allowed_dirs_extra = config.get("allowed_dirs_extra", [])
@@ -782,7 +784,7 @@ def phase_6_project_check(abs_path, is_known_interpreter, config, words):
             continue
         extra_prefix = canon_extra + "/"
         if canon_abs == canon_extra or canon_abs.startswith(extra_prefix):
-            allow()
+            allow("P6:allowed_dir_match")
 
     # Path is outside project and allowed_dirs_extra
     if is_known_interpreter:
@@ -1011,7 +1013,7 @@ def phase_7_general_command(words, config):
         # No positional arguments at all - allow (command with only flags)
         if DEBUG:
             print("P7D:allow:no_args", file=sys.stderr)
-        allow()
+        allow("P7:no_args")
 
     # Check each path for project containment
     allowed_dirs_extra = config.get("allowed_dirs_extra", [])
@@ -1056,7 +1058,7 @@ def phase_7_general_command(words, config):
     # All paths contained
     if DEBUG:
         print("P7D:allow:all_contained", file=sys.stderr)
-    allow()
+    allow("P7:all_contained")
 
 
 def validate_single_command(command, config):
@@ -1070,46 +1072,106 @@ def validate_single_command(command, config):
         phase_6_project_check(abs_path, is_known_interpreter, config, words)
         phase_7_general_command(words, config)
         return ("reject", "no_rule_matched")  # fail-closed
-    except AllowException:
-        return ("allow", "phase_passed")
+    except AllowException as e:
+        return ("allow", e.reason)
     except RejectException as e:
         return ("reject", e.reason)
 
 
-def output_allow():
-    """Output allow decision and exit."""
+def _get_audit_log_path():
+    """Get audit log path from config or default."""
+    config = load_config()
+    audit_path = config.get("audit_log_path", "")
+    if audit_path:
+        return os.path.expanduser(audit_path)
+    plugin_root = os.environ.get("CLAUDE_PLUGIN_ROOT", "")
+    if plugin_root:
+        return os.path.join(plugin_root, "logs", "decisions.jsonl")
+    return None
+
+
+def _write_audit_log(decision, reason):
+    """Write a single JSONL line to the audit log."""
+    try:
+        audit_path = _get_audit_log_path()
+        if not audit_path:
+            return
+        import datetime
+        log_entry = json.dumps({
+            "ts": datetime.datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ"),
+            "decision": decision,
+            "command": _current_command,
+            "phase": reason.split(":")[0] if ":" in reason else reason,
+            "reason": reason
+        })
+        os.makedirs(os.path.dirname(audit_path), exist_ok=True)
+        with open(audit_path, "a") as f:
+            f.write(log_entry + "\n")
+    except Exception:
+        pass  # Never let logging failures break the hook
+
+
+def output_allow(reason="allowed"):
+    """Output allow decision with reason and exit."""
+    _write_audit_log("allow", reason)
     print(json.dumps({
         "hookSpecificOutput": {
-            "hookEventName": "PermissionRequest",
-            "decision": {"behavior": "allow"}
+            "hookEventName": "PreToolUse",
+            "permissionDecision": "allow",
+            "permissionDecisionReason": reason
         }
     }))
     sys.exit(0)
 
 
-def output_reject(reason):
-    """Output reject decision and exit."""
+def output_ask(reason="unknown"):
+    """Output ask decision (show dialog with reason) and exit."""
     if DEBUG:
-        print(f"REJECT[{reason}]", file=sys.stderr)
+        print(f"ASK[{reason}]", file=sys.stderr)
+    _write_audit_log("ask", reason)
+    print(json.dumps({
+        "hookSpecificOutput": {
+            "hookEventName": "PreToolUse",
+            "permissionDecision": "ask",
+            "permissionDecisionReason": reason
+        }
+    }))
+    sys.exit(0)
+
+
+def output_deny(reason="unknown"):
+    """Output deny decision (hard block) and exit."""
+    if DEBUG:
+        print(f"DENY[{reason}]", file=sys.stderr)
+    _write_audit_log("deny", reason)
+    print(json.dumps({
+        "hookSpecificOutput": {
+            "hookEventName": "PreToolUse",
+            "permissionDecision": "deny",
+            "permissionDecisionReason": reason
+        }
+    }))
     sys.exit(0)
 
 
 def main():
     """Main entry point."""
+    global _current_command
     input_str = sys.stdin.read()
     try:
         config = load_config()
     except RejectException as e:
-        output_reject(e.reason)
+        output_deny(e.reason)
         return
 
     try:
         input_data = json.loads(input_str)
     except json.JSONDecodeError:
-        output_reject("json_parse_error")
+        output_deny("json_parse_error")
         return
 
     command = input_data.get("tool_input", {}).get("command", "")
+    _current_command = command
 
     # Pre-validation (Phase S0, 1, 1.5, 2) — 複合コマンド分割前
     try:
@@ -1118,15 +1180,20 @@ def main():
         command = phase_1_5_strip_safe_suffixes(command)
         phase_2_shell_syntax(command)
     except RejectException as e:
-        output_reject(e.reason)
+        output_deny(e.reason)
         return
 
     # Phase 3-7 (validate_single_command経由)
     decision, reason = validate_single_command(command, config)
     if decision == "allow":
-        output_allow()
+        output_allow(reason)
     else:
-        output_reject(reason)
+        # reasonで deny vs ask を分岐
+        deny_reasons = {"null_byte", "json_error", "empty_command", "control_char", "unicode_whitespace", "unknown_tool"}
+        if reason in deny_reasons:
+            output_deny(reason)
+        else:
+            output_ask(reason)
 
 
 if __name__ == "__main__":

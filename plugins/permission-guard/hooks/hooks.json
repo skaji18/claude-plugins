@@ -1,7 +1,7 @@
 {
   "description": "8-phase Bash command permission validation. Auto-approves safe commands, blocks dangerous patterns.",
   "hooks": {
-    "PermissionRequest": [
+    "PreToolUse": [
       {
         "matcher": "Bash",
         "hooks": [

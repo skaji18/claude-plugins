@@ -379,3 +379,8 @@ subcommand_ask:
   - git:filter-branch
 
 allowed_dirs_extra: []
+
+# Audit log for all permission decisions (JSONL format)
+# Default: ${CLAUDE_PLUGIN_ROOT}/logs/decisions.jsonl
+# Set to empty string "" to disable logging
+audit_log_path: ""
