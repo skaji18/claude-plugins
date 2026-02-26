@@ -13,12 +13,16 @@ import re
 import os
 from pathlib import PurePosixPath
 
-# Conditional YAML import (needed for config loading)
-try:
-    import yaml
-    HAS_YAML = True
-except ImportError:
-    HAS_YAML = False
+import yaml
+
+
+class RejectException(Exception):
+    def __init__(self, reason):
+        self.reason = reason
+
+
+class AllowException(Exception):
+    pass
 
 # --- Configuration ---
 def _detect_project_dir():
@@ -41,21 +45,11 @@ DEBUG = os.getenv("PERMISSION_DEBUG", "0") == "1"
 
 
 def allow():
-    """Output allow decision and exit."""
-    print(json.dumps({
-        "hookSpecificOutput": {
-            "hookEventName": "PermissionRequest",
-            "decision": {"behavior": "allow"}
-        }
-    }))
-    sys.exit(0)
+    raise AllowException()
 
 
 def reject(reason="unknown"):
-    """Output reject decision (empty = show dialog) and exit."""
-    if DEBUG:
-        print(f"REJECT[{reason}]", file=sys.stderr)
-    sys.exit(0)
+    raise RejectException(reason)
 
 
 def load_config():
@@ -244,10 +238,6 @@ def load_config():
 
     # Layer 1: Load base config (overrides defaults)
     if os.path.exists(base_config_path):
-        if not HAS_YAML:
-            if DEBUG:
-                print(f"PyYAML not installed, using defaults", file=sys.stderr)
-            return default_config
         try:
             with open(base_config_path, 'r') as f:
                 user_config = yaml.safe_load(f)
@@ -261,10 +251,6 @@ def load_config():
 
     # Layer 2: Merge project-level config (if exists)
     if os.path.exists(project_config_path):
-        if not HAS_YAML:
-            if DEBUG:
-                print(f"PyYAML not installed, ignoring project config", file=sys.stderr)
-            return default_config
         try:
             with open(project_config_path, 'r') as f:
                 project_conf = yaml.safe_load(f)
@@ -368,10 +354,6 @@ def load_config():
 
     # Layer 3: Merge local overlay (if exists)
     if os.path.exists(local_path):
-        if not HAS_YAML:
-            if DEBUG:
-                print(f"PyYAML not installed, ignoring local overlay", file=sys.stderr)
-            return default_config
         try:
             with open(local_path, 'r') as f:
                 local = yaml.safe_load(f)
@@ -1077,38 +1059,74 @@ def phase_7_general_command(words, config):
     allow()
 
 
+def validate_single_command(command, config):
+    """Phase 3-7を1コマンドに対して実行。
+    Returns: ("allow", reason) or ("reject", reason)
+    """
+    try:
+        words, interpreter, script_path, is_known_interpreter = phase_3_parse_command(command, config)
+        script_path = phase_4_normalize_flags(words, interpreter, script_path, is_known_interpreter, config)
+        abs_path = phase_5_normalize_path(script_path)
+        phase_6_project_check(abs_path, is_known_interpreter, config, words)
+        phase_7_general_command(words, config)
+        return ("reject", "no_rule_matched")  # fail-closed
+    except AllowException:
+        return ("allow", "phase_passed")
+    except RejectException as e:
+        return ("reject", e.reason)
+
+
+def output_allow():
+    """Output allow decision and exit."""
+    print(json.dumps({
+        "hookSpecificOutput": {
+            "hookEventName": "PermissionRequest",
+            "decision": {"behavior": "allow"}
+        }
+    }))
+    sys.exit(0)
+
+
+def output_reject(reason):
+    """Output reject decision and exit."""
+    if DEBUG:
+        print(f"REJECT[{reason}]", file=sys.stderr)
+    sys.exit(0)
+
+
 def main():
     """Main entry point."""
-    # Read input from stdin
     input_str = sys.stdin.read()
+    try:
+        config = load_config()
+    except RejectException as e:
+        output_reject(e.reason)
+        return
 
-    # Load configuration
-    config = load_config()
-
-    # Parse JSON input (fail closed on error)
     try:
         input_data = json.loads(input_str)
     except json.JSONDecodeError:
-        reject("json_parse_error")
+        output_reject("json_parse_error")
+        return
 
     command = input_data.get("tool_input", {}).get("command", "")
 
-    # Run phases
-    phase_s0_null_byte_check(input_str, command)
-    phase_1_sanitize(input_data, command)
-    command = phase_1_5_strip_safe_suffixes(command)
-    phase_2_shell_syntax(command)
+    # Pre-validation (Phase S0, 1, 1.5, 2) — 複合コマンド分割前
+    try:
+        phase_s0_null_byte_check(input_str, command)
+        phase_1_sanitize(input_data, command)
+        command = phase_1_5_strip_safe_suffixes(command)
+        phase_2_shell_syntax(command)
+    except RejectException as e:
+        output_reject(e.reason)
+        return
 
-    words, interpreter, script_path, is_known_interpreter = phase_3_parse_command(command, config)
-    script_path = phase_4_normalize_flags(words, interpreter, script_path, is_known_interpreter, config)
-    abs_path = phase_5_normalize_path(script_path)
-
-    # Phase 6: PROJECT_DIR containment check (+ allowed_dirs_extra)
-    # Only auto-approves interpreters and path-based execution; plain commands fall through
-    phase_6_project_check(abs_path, is_known_interpreter, config, words)
-
-    # Phase 7: General command auto-approval (non-interpreter commands only)
-    phase_7_general_command(words, config)
+    # Phase 3-7 (validate_single_command経由)
+    decision, reason = validate_single_command(command, config)
+    if decision == "allow":
+        output_allow()
+    else:
+        output_reject(reason)
 
 
 if __name__ == "__main__":

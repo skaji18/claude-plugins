@@ -30,5 +30,12 @@ else
     chmod +x "$HOOK" 2>/dev/null && echo "  Fixed: made executable" || exit 1
 fi
 
+# Create venv and install dependencies
+SCRIPT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
+cd "${SCRIPT_DIR}"
+python3 -m venv .venv
+.venv/bin/pip install --quiet pyyaml
+echo "venv created and pyyaml installed"
+
 echo ""
 echo "Setup complete. Run 'bash scripts/test-permission.sh' to verify."
