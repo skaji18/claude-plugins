@@ -1,0 +1,9 @@
+{
+  "name": "smart-commit",
+  "version": "1.0.0",
+  "description": "git diff を読み取り LLM がコミットメッセージを自動生成。Co-Authored-By を自動付与して1コマンドでコミットできる Claude Code プラグイン。",
+  "author": {
+    "name": "skaji18",
+    "email": "skaji18@users.noreply.github.com"
+  }
+}

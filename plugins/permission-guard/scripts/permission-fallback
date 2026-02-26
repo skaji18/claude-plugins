@@ -3,7 +3,7 @@
 .claude/hooks/permission-fallback
 
 PermissionRequest fallback hook (Python reimplementation)
-Automatically approves scripts/ and .claude/hooks/ execution with 8-phase validation.
+Automatically approves PROJECT_DIR-scoped execution (+ allowed_dirs_extra) with 8-phase validation.
 New Phase 7B2: Subcommand rejection for destructive operations.
 """
 
@@ -768,28 +768,45 @@ def phase_5_normalize_path(script_path):
     return abs_path
 
 
-def phase_6_scripts_hooks_check(abs_path, is_known_interpreter):
-    """Phase 6: Check scripts/ or .claude/hooks/ containment."""
-    # Must be under PROJECT_DIR
-    project_prefix = PROJECT_DIR + "/"
+def phase_6_project_check(abs_path, is_known_interpreter, config, words):
+    """Phase 6: Check PROJECT_DIR containment (+ allowed_dirs_extra).
 
-    if abs_path == PROJECT_DIR or abs_path.startswith(project_prefix):
-        rel_path = abs_path[len(project_prefix):] if abs_path.startswith(project_prefix) else ""
+    Auto-approves only:
+      - Known interpreter + script path in PROJECT_DIR or allowed_dirs_extra
+      - Direct path execution (words[0] contains '/') in PROJECT_DIR or allowed_dirs_extra
+    Plain command names (e.g. 'rm', 'curl') fall through to Phase 7.
+    """
+    # Only auto-approve interpreters or actual path-based execution
+    is_path_execution = "/" in words[0]
+    if not is_known_interpreter and not is_path_execution:
+        return False  # Plain command name → Phase 7 handles it
 
-        # Check 2a: scripts/ containment (F-005: startswith only, no substring match)
-        if rel_path.startswith("scripts/"):
+    canon_abs = canonicalize_path(abs_path)
+
+    # Check 1: PROJECT_DIR containment
+    canon_project = canonicalize_path(PROJECT_DIR)
+    project_prefix = canon_project + "/"
+
+    if canon_abs == canon_project or canon_abs.startswith(project_prefix):
+        allow()
+
+    # Check 2: allowed_dirs_extra containment
+    allowed_dirs_extra = config.get("allowed_dirs_extra", [])
+    for extra_dir in allowed_dirs_extra:
+        if not extra_dir:
+            continue
+        canon_extra = canonicalize_path(extra_dir)
+        if not canon_extra:
+            continue
+        extra_prefix = canon_extra + "/"
+        if canon_abs == canon_extra or canon_abs.startswith(extra_prefix):
             allow()
 
-        # Check 2b: .claude/hooks/ containment
-        if rel_path.startswith(".claude/hooks/"):
-            allow()
-
-    # Phase 6 did not approve
-    # Known interpreter with unapproved path: REJECT (don't fall through)
+    # Path is outside project and allowed_dirs_extra
     if is_known_interpreter:
         reject("P6:not_in_allowed_dir")
 
-    # Non-interpreter: fall through to Phase 7
+    # Non-interpreter path outside project: fall through to Phase 7
     return False
 
 
@@ -1014,9 +1031,6 @@ def phase_7_general_command(words, config):
             print("P7D:allow:no_args", file=sys.stderr)
         allow()
 
-    # Check if this is direct execution (first word is a path)
-    is_direct_execution = ("/" in words[0])
-
     # Check each path for project containment
     allowed_dirs_extra = config.get("allowed_dirs_extra", [])
 
@@ -1057,25 +1071,6 @@ def phase_7_general_command(words, config):
                 print(f"P7D:reject:outside={p7_abs}", file=sys.stderr)
             reject(f"P7D:outside_project:{p7_abs}")
 
-        # For direct execution (first path is words[0]), apply scripts/ or .claude/hooks/ restriction
-        # This ensures direct execution is only allowed from trusted directories
-        if is_direct_execution and idx == 0:
-            # Check if path is within scripts/ or .claude/hooks/
-            rel_path = p7_abs[len(project_prefix):] if p7_abs.startswith(project_prefix) else ""
-
-            # Check scripts/ containment (F-005: startswith only, no substring match)
-            if rel_path.startswith("scripts/"):
-                continue  # OK, check next path
-
-            # Check .claude/hooks/ containment
-            if rel_path.startswith(".claude/hooks/"):
-                continue  # OK, check next path
-
-            # Direct execution outside scripts/ or .claude/hooks/ - reject
-            if DEBUG:
-                print(f"P7D:reject:direct_exec_not_in_allowed={rel_path}", file=sys.stderr)
-            reject(f"P7D:direct_exec_not_allowed:{rel_path}")
-
     # All paths contained
     if DEBUG:
         print("P7D:allow:all_contained", file=sys.stderr)
@@ -1108,9 +1103,9 @@ def main():
     script_path = phase_4_normalize_flags(words, interpreter, script_path, is_known_interpreter, config)
     abs_path = phase_5_normalize_path(script_path)
 
-    # Phase 6: scripts/ or .claude/hooks/ check
-    # Returns False if fell through to Phase 7
-    phase_6_scripts_hooks_check(abs_path, is_known_interpreter)
+    # Phase 6: PROJECT_DIR containment check (+ allowed_dirs_extra)
+    # Only auto-approves interpreters and path-based execution; plain commands fall through
+    phase_6_project_check(abs_path, is_known_interpreter, config, words)
 
     # Phase 7: General command auto-approval (non-interpreter commands only)
     phase_7_general_command(words, config)

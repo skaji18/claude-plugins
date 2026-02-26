@@ -143,13 +143,11 @@ run_test "F-002: git with leading flag -C triggers ask" "git -C /tmp status" "di
 run_test "F-002: git with leading flag -c triggers ask" "git -c user.name=x commit" "dialog"
 run_test "F-002: git status without leading flags → allow" "git status" "allow"
 
-# F-005: Path with /scripts/ substring no longer over-matches
-# A path like "vendor/scripts/evil.sh" should NOT be auto-approved
-# Only top-level scripts/ is allowed for direct execution
-run_test "F-005: vendor/scripts path not auto-approved" "vendor/scripts/evil.sh" "dialog"
+# F-005: vendor/scripts/evil.sh is within PROJECT_DIR
+# Phase 6 now auto-approves path-based execution ("/") anywhere in project
+run_test "F-005: vendor/scripts path auto-approved (in PROJECT_DIR)" "vendor/scripts/evil.sh" "allow"
 
 # F-009: Subcommand rule matching with correct index separation
-# This tests that subcommand_ask rules with flags work correctly
 run_test "F-009: git stash drop detected" "git stash drop" "dialog"
 run_test "F-009: git branch -D detected" "git branch -D feature" "dialog"
 run_test "F-009: git tag -d detected" "git tag -d v1.0" "dialog"
@@ -297,6 +295,36 @@ run_test_raw "F-016: em space (U+2003) → reject" \
 run_test_raw "F-016: ideographic space (U+3000) → reject" \
     '{"tool_name":"Bash","tool_input":{"command":"ls\u3000-la"},"hook_event_name":"PermissionRequest"}' \
     "dialog"
+
+# ============================================================
+# Section 10: Phase 6/7 拡大テスト + セキュリティ境界
+# ============================================================
+echo ""
+echo "--- Phase 6/7 Expanded Scope & Security Boundary ---"
+
+# Phase 6 拡大: インタプリタ + プロジェクト内任意パス → allow (scripts/外でもOK)
+run_test "Phase6-expand: python3 src/app.py → allow" "python3 src/app.py" "allow"
+run_test "Phase6-expand: bash src/tool.sh → allow" "bash src/tool.sh" "allow"
+run_test "Phase6-expand: node src/index.js → allow" "node src/index.js" "allow"
+
+# Phase 6 拡大: インタプリタ + プロジェクト外 → dialog
+run_test "Phase6-expand: python3 /tmp/outside.py → dialog" "python3 /tmp/outside.py" "dialog"
+
+# Phase 7 拡大: パスベース直接実行 + プロジェクト内 → allow (scripts/外でもOK)
+run_test "Phase7-expand: src/tool.sh direct exec → allow" "src/tool.sh" "allow"
+run_test "Phase7-expand: vendor/scripts/evil.sh direct exec → allow" "vendor/scripts/evil.sh" "allow"
+
+# Phase 7 拡大: パスベース直接実行 + プロジェクト外 → dialog
+run_test "Phase7-expand: /tmp/outside.sh → dialog" "/tmp/outside.sh" "dialog"
+run_test "Phase7-expand: /usr/local/bin/evil → dialog" "/usr/local/bin/evil" "dialog"
+
+# セキュリティ境界: インタプリタ + プロジェクト外 → dialog
+run_test "security-boundary: bash /etc/evil.sh → dialog" "bash /etc/evil.sh" "dialog"
+run_test "security-boundary: node /tmp/evil.js → dialog" "node /tmp/evil.js" "dialog"
+run_test "security-boundary: python3 /var/tmp/hack.py → dialog" "python3 /var/tmp/hack.py" "dialog"
+
+# エッジケース: ./path は "/" を含むのでパスベース実行として Phase 6 で処理
+run_test "edge: ./scripts/setup.sh direct exec → allow" "./scripts/setup.sh" "allow"
 
 echo ""
 echo "=== Results ==="
