@@ -55,12 +55,10 @@ bash plugins/task-tracker/scripts/validate.sh
 
 ### permission-guard
 
-```bash
-# Verify dependencies
-bash plugins/permission-guard/scripts/setup.sh
+Run the setup skill in Claude Code:
 
-# Run tests
-bash plugins/permission-guard/scripts/test-permission.sh
+```
+/permission-guard:setup
 ```
 
 Alternatively, use the `/init` command in Claude Code for interactive setup.
@@ -139,6 +137,9 @@ See [plugins/task-tracker/README.md](plugins/task-tracker/) for full documentati
 
 | Command | Purpose |
 |---------|---------|
+| `/permission-guard:setup` | Verify dependencies and setup |
+| `/permission-guard:show` | Show current configuration |
+| `/permission-guard:optimize` | Optimize configuration |
 | `/permission-guard:permission-test` | Run validation test suite |
 
 See [plugins/permission-guard/README.md](plugins/permission-guard/) for full documentation.
