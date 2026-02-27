@@ -27,7 +27,7 @@ hookの呼び出しタイミングとネイティブ権限の関係:
 ```
 settings.json deny → block (hookは呼ばれない)
 settings.json allow → allow (hookは呼ばれない)
-ask or マッチなし → PermissionRequest → hook評価
+ask or マッチなし → PreToolUse → hook評価
 ```
 
 ### hookの責務
@@ -104,52 +104,43 @@ ask or マッチなし → PermissionRequest → hook評価
 
 **現状**: Phase 7Dで「パス引数なし」のコマンドは無条件allow（fail-open） → ~30-50%のコマンドがゼロ検証で通過
 
-**新設計**:
+**実装済み設計**:
 ```yaml
-known_safe:
-  - ls
-  - cat
-  - grep
-  - git
-  - make
-  - cargo
-  - gcc
-  - ...  # ~40-50コマンド
-known_safe_extra: []  # ユーザー追加可能（削除不可）
+tools:
+  # allowエントリ（自動承認）
+  ls: "allow"
+  cat: "allow"
+  grep: "allow"
+  make: "allow"
+  cargo: "allow"
+  gcc: "allow"
+  # ... ~40コマンド
+
+  # askエントリ（ユーザー確認）
+  curl: "ask"
+  rm: "ask"
+
+  # 複雑エントリ（サブコマンド/フラグ制御）
+  git:
+    ask: ["push", "clean", "filter-branch", "rebase", "reset"]
+    dangerous_flags: ["--force", "-f", "--hard", "-D", "--no-verify"]
+    default: "allow"
 ```
 
-- `known_safe`リストに無いコマンド → `ask`
+- `tools`で`"allow"`以外のコマンド → `ask`
 - データ駆動選定: warn modeで実際のプロジェクトでの使用頻度を測定し、上位40-50コマンドを選定
 
 ### 安全列挙（サブコマンド）
 
-**現行**: `subcommand_ask`（danger-enumeration） → 破壊的コマンドの列挙漏れリスク
+**旧設計**: `subcommand_ask`（danger-enumeration） → 破壊的コマンドの列挙漏れリスク
 
-**新設計**: ティア分類（safe-enumeration）
+**実装済み設計**: `tools`統一構造でサブコマンド制御
 ```yaml
-subcommand_rules:
+tools:
   git:
-    allow:  # 読み取り専用コマンド（自動承認）
-      - status
-      - log
-      - diff
-      - show
-      - branch
-      - tag
-      - reflog
-      - ... # ~40個
-    ask:  # 破壊的/リモート影響コマンド（明示確認）
-      - push
-      - clean
-      - reset
-      - checkout:.
-      - restore:.
-      - stash:drop
-      - rebase
-      - branch:-D
-      - tag:-d
-      - filter-branch
-    default_action: ask  # 未知サブコマンドはask（fail-closed）
+    ask: ["push", "clean", "filter-branch", "rebase", "reset"]
+    dangerous_flags: ["--force", "-f", "--hard", "-D", "--no-verify"]
+    default: "allow"  # 未知サブコマンドはallow（default設定で変更可）
 ```
 
 ### パス包含（全引数パス候補化）
@@ -240,7 +231,7 @@ hookの価値は列挙の**質**にある:
 
 ### cwd前提（API制約）
 
-- hookは実行時の**cwd（current working directory）を直接取得できない**（PermissionRequestにcwdフィールドが含まれていない）
+- hookは実行時の**cwd（current working directory）を直接取得できない**（PreToolUseにcwdフィールドが含まれていない）
 - 現在の実装: `PROJECT_DIR`をベースにパス解決
 - 問題: 先行する`cd`コマンドでcwdがずれた場合、bare filename解決が誤る可能性
 - 緩和策: Phase 7Dで`cd /outside`コマンド自体を検出しreject（ただし、settings.json設定次第で漏れる可能性あり）

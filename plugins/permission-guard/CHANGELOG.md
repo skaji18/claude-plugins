@@ -30,7 +30,7 @@
 - **NEW-6** — find/chmod/chown added to always_ask
 
 ### Changed
-- **test suite** — expanded from 13 to 93 test cases covering all new features
+- **test suite** — expanded from 13 to 117 test cases covering all new features
 
 ## [1.0.0] - 2026-02-15
 
