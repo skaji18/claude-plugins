@@ -3,6 +3,7 @@
 ## [Unreleased]
 
 ### Added
+- **project-contained command auto-allow** — commands with `/` in the name (e.g., `.venv/bin/pytest`, `scripts/deploy.sh`) are resolved to absolute path and auto-allowed if within `PROJECT_DIR` or `allowed_dirs_extra`. No new config keys needed.
 - **docs/DESIGN.md** — design document covering value proposition, architecture, and design principles
 - **deny-by-default** — unknown commands now prompt user; known_safe list (~63 commands) for auto-approval
 - **safe-enumeration** — subcommand_rules replaces subcommand_ask with allow/ask/default_action model

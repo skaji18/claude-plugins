@@ -21,7 +21,7 @@ The goal is to reduce permission fatigue for routine operations while maintainin
 | 3 | Parse command | Split into words, identify interpreter vs. direct execution |
 | 4 | Normalize flags | Classify interpreter flags as safe/dangerous |
 | 5 | Normalize path | Resolve to absolute path, check project containment |
-| 6 | Scripts/hooks check | Auto-approve if path is in `scripts/` or `.claude/hooks/` |
+| 6 | Project containment | Auto-approve if command path resolves within project or `allowed_dirs_extra` |
 | 7 | General command | Tool lookup (allow/ask/rules), subcommand matching, path containment for all arguments |
 
 ## Installation

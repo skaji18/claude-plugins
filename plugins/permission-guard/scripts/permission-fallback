@@ -428,6 +428,25 @@ def validate_single_command(command, config):
     if cmd_basename in NEVER_SAFE:
         return ("ask", f"never_safe:{cmd_basename}")
 
+    # Project-contained command path → auto-allow
+    # e.g., .venv/bin/pytest, scripts/deploy.sh → allow if within PROJECT_DIR or allowed_dirs_extra
+    # Uses normpath (not realpath) to avoid resolving symlinks — .venv/bin/python is a symlink
+    # but its location is within the project, so it should be allowed.
+    if '/' in cmd_name:
+        if cmd_name.startswith('/'):
+            abs_cmd = os.path.normpath(cmd_name)
+        else:
+            abs_cmd = os.path.normpath(os.path.join(PROJECT_DIR, cmd_name))
+        norm_project = os.path.normpath(PROJECT_DIR)
+        if abs_cmd == norm_project or abs_cmd.startswith(norm_project + "/"):
+            return ("allow", f"project_contained_cmd:{cmd_basename}")
+        for extra_dir in config.get("allowed_dirs_extra", []):
+            if not extra_dir:
+                continue
+            norm_extra = os.path.normpath(extra_dir)
+            if abs_cmd == norm_extra or abs_cmd.startswith(norm_extra + "/"):
+                return ("allow", f"project_contained_cmd:{cmd_basename}")
+
     tools = config.get("tools", {})
     tool_entry = tools.get(cmd_basename)
 

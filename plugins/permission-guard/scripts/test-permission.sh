@@ -77,8 +77,8 @@ echo "--- Baseline Tests ---"
 # Basic allow (tools with "allow" in defaults.yaml)
 run_test "ls in project" "ls work/" "allow"
 run_test "cat project file" "cat README.md" "allow"
-# Note: direct script execution is now unknown_command → ask (no interpreter lookup)
-run_test "script execution (unknown cmd)" "scripts/setup.sh" "dialog"
+# Direct script execution: project-contained path → auto-allow
+run_test "script execution (project-contained)" "scripts/setup.sh" "allow"
 
 # Safe compound commands are now allowed (cmd_092: compound validation)
 run_test "pipe: safe | safe → allow" "cat foo | grep bar" "allow"
@@ -146,8 +146,8 @@ run_test "F-002: git with leading flag -C → allow (no leading-flag rule)" "git
 run_test "F-002: git with leading flag -c → allow (no leading-flag rule)" "git -c user.name=x commit" "allow"
 run_test "F-002: git status without leading flags → allow" "git status" "allow"
 
-# F-005: Direct path execution — now unknown_command → ask
-run_test "F-005: vendor/scripts path → dialog (unknown command)" "vendor/scripts/evil.sh" "dialog"
+# F-005: Direct path execution — project-contained → auto-allow
+run_test "F-005: vendor/scripts path → allow (project-contained)" "vendor/scripts/evil.sh" "allow"
 
 # F-009: Subcommand rules — "stash drop" not in new ask list → allow
 # git branch -D: -D IS in dangerous_flags → still ask
@@ -318,19 +318,40 @@ run_test "python3 with script → ask (unknown cmd)" "python3 src/app.py" "dialo
 run_test "bash with script → ask (unknown cmd)" "bash src/tool.sh" "dialog"
 run_test "node with script → ask (unknown cmd)" "node src/index.js" "dialog"
 
-# Direct path execution — unknown_command → ask (cmd_basename not in tools)
-run_test "src/tool.sh direct exec → ask (unknown cmd)" "src/tool.sh" "dialog"
-run_test "vendor/scripts/evil.sh direct exec → ask (unknown cmd)" "vendor/scripts/evil.sh" "dialog"
-run_test "/tmp/outside.sh → ask (unknown cmd)" "/tmp/outside.sh" "dialog"
-run_test "/usr/local/bin/evil → ask (unknown cmd)" "/usr/local/bin/evil" "dialog"
+# Direct path execution — project-contained → allow, outside → ask
+run_test "src/tool.sh direct exec → allow (project-contained)" "src/tool.sh" "allow"
+run_test "vendor/scripts/evil.sh direct exec → allow (project-contained)" "vendor/scripts/evil.sh" "allow"
+run_test "/tmp/outside.sh → ask (outside project)" "/tmp/outside.sh" "dialog"
+run_test "/usr/local/bin/evil → ask (outside project)" "/usr/local/bin/evil" "dialog"
 
 # Absolute path interpreters → ask (unknown_command)
 run_test "bash /etc/evil.sh → ask (unknown cmd)" "bash /etc/evil.sh" "dialog"
 run_test "node /tmp/evil.js → ask (unknown cmd)" "node /tmp/evil.js" "dialog"
 run_test "python3 /var/tmp/hack.py → ask (unknown cmd)" "python3 /var/tmp/hack.py" "dialog"
 
-# ./path — cmd_basename not in tools → ask
-run_test "./scripts/setup.sh → ask (unknown cmd)" "./scripts/setup.sh" "dialog"
+# ./path — project-contained → allow
+run_test "./scripts/setup.sh → allow (project-contained)" "./scripts/setup.sh" "allow"
+
+# ============================================================
+# Section 11: Project-contained command path auto-allow
+# ============================================================
+echo ""
+echo "--- Project-contained command path auto-allow ---"
+
+# .venv/bin/ commands → allow (project-contained)
+run_test "venv: .venv/bin/pytest → allow" ".venv/bin/pytest tests/" "allow"
+run_test "venv: .venv/bin/python → allow" ".venv/bin/python -m tanebi new hello" "allow"
+run_test "venv: .venv/bin/tanebi → allow" ".venv/bin/tanebi status cmd_001" "allow"
+
+# Relative path traversal escaping project → ask (canonicalize resolves ..)
+run_test "traversal: ../../../tmp/evil.sh → ask" "../../../tmp/evil.sh" "dialog"
+
+# Absolute path outside project → ask (falls through to basename lookup)
+run_test "abs: /usr/bin/git → allow (basename in tools)" "/usr/bin/git status" "allow"
+run_test "abs: /usr/bin/unknowncmd → ask (basename not in tools)" "/usr/bin/unknowncmd" "dialog"
+
+# sudo with path → still ask (NEVER_SAFE checked before containment)
+run_test "sudo path: /usr/bin/sudo → ask (NEVER_SAFE)" "/usr/bin/sudo ls" "dialog"
 
 # ─── パイプ・チェイン・リダイレクト分割検証テスト ───────────────
 echo ""
