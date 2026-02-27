@@ -6,7 +6,7 @@
 
 ## Overview
 
-When Claude Code requests permission to run a Bash command, this plugin intercepts the request and runs it through an 8-phase validation pipeline. Safe commands (project scripts, read-only file operations within the project) are auto-approved. Dangerous patterns (shell injection, path traversal, destructive operations) trigger the standard permission dialog.
+When Claude Code requests permission to run a Bash command, this plugin intercepts the request via a `PreToolUse` hook and runs it through an 8-phase validation pipeline. Safe commands (project scripts, read-only file operations within the project) are auto-approved. Dangerous patterns (shell injection, path traversal, destructive operations) trigger the standard permission dialog.
 
 The goal is to reduce permission fatigue for routine operations while maintaining strong security boundaries.
 
@@ -22,7 +22,7 @@ The goal is to reduce permission fatigue for routine operations while maintainin
 | 4 | Normalize flags | Classify interpreter flags as safe/dangerous |
 | 5 | Normalize path | Resolve to absolute path, check project containment |
 | 6 | Scripts/hooks check | Auto-approve if path is in `scripts/` or `.claude/hooks/` |
-| 7 | General command | ALWAYS_ASK list, subcommand rules, path containment for all arguments |
+| 7 | General command | Tool lookup (allow/ask/rules), subcommand matching, path containment for all arguments |
 
 ## Installation
 
@@ -30,67 +30,99 @@ The goal is to reduce permission fatigue for routine operations while maintainin
 /plugin install permission-guard@skaji18-plugins
 ```
 
-Or verify dependencies manually:
+After installation, run the setup skill to create a venv, install dependencies, and generate your user config template:
 
 ```bash
-bash scripts/setup.sh
+/permission-guard:setup
 ```
 
 ## Configuration
 
-### 4-Layer Config Merge
+### 2-Layer Config Merge
 
-The plugin uses a 4-layer configuration merge strategy:
+The plugin uses a 2-layer configuration merge:
 
-| Layer | Source | Priority |
-|-------|--------|----------|
-| 0 | Hardcoded defaults (in script) | Lowest |
-| 1 | Plugin config (`config/permission-config.yaml`) | |
-| 2 | Project config (`.claude/permission-config.yaml`) | |
-| 3 | Local overlay (`local/hooks/permission-config.yaml`) | Highest |
+| Layer | Source | Purpose |
+|-------|--------|---------|
+| 1 | `config/defaults.yaml` (plugin defaults) | Base rules for all tools |
+| 2 | `.claude/permission-guard.yaml` (user overrides) | Project-specific additions/removals |
 
-### Customizable Keys
+### Plugin Defaults (`config/defaults.yaml`)
 
-| Key | Type | Merge Strategy | Description |
-|-----|------|----------------|-------------|
-| `always_ask` | array | Union (append-only) | Commands that always trigger the permission dialog |
-| `subcommand_ask` | array | Union (append-only) | Subcommand patterns that trigger dialog (e.g., `git:push`) |
-| `allowed_dirs_extra` | array | Union (append-only) | Additional directories outside the project to allow access |
+The `tools` key uses a unified structure with three value types:
 
-### Security Floors
+**Simple entries** — a single string: `"allow"` or `"ask"`
 
-These items can never be removed from `always_ask`, regardless of config overrides:
-
-- `sudo`, `su`, `rm`, `rmdir`
-
-These subcommand rules can never be removed from `subcommand_ask`:
-
-- `git:push`, `git:reset:--hard`, `gh:pr:merge`
-
-### Frozen Keys
-
-The `interpreters` configuration key is frozen and cannot be overridden by project or local configs. This prevents malicious projects from whitelisting dangerous interpreter flags.
-
-## Testing
-
-Run the built-in test suite:
-
-```bash
-/permission-guard:permission-test
+```yaml
+tools:
+  ls: "allow"     # always auto-approved
+  rm: "ask"       # always triggers dialog
 ```
 
-Or run directly:
+**Rule entries** — a map for tools that need subcommand-level control:
 
-```bash
-bash scripts/test-permission.sh
+```yaml
+tools:
+  git:
+    ask: ["push", "clean", "filter-branch", "rebase", "reset"]
+    dangerous_flags: ["--force", "-f", "--hard", "-D", "--no-verify"]
+    default: "allow"
 ```
+
+**`pipe_deny_right`** — commands that are always blocked when appearing as the right side of a pipe:
+
+```yaml
+pipe_deny_right:
+  - bash
+  - sh
+  - python
+  - node
+  # ...
+```
+
+### User Overrides (`.claude/permission-guard.yaml`)
+
+Created automatically by `/permission-guard:setup`. Supports the following keys:
+
+| Key | Type | Description |
+|-----|------|-------------|
+| `tools_add` | map | Add tools (simple or rule entries) on top of defaults |
+| `tools_remove` | array | Remove tool names from the defaults |
+| `pipe_deny_right_add` | array | Add entries to the `pipe_deny_right` list |
+| `allowed_dirs_extra` | array | Additional directories outside the project to allow |
+| `audit_log_path` | string | Override the decision log path (default: `logs/decisions.jsonl`) |
+
+Example:
+
+```yaml
+tools_add:
+  bun: "allow"
+  terraform:
+    ask: ["destroy", "apply"]
+    default: "ask"
+tools_remove:
+  - tee
+pipe_deny_right_add:
+  - lua
+allowed_dirs_extra: []
+audit_log_path: ""
+```
+
+## Commands
+
+| Command | Description |
+|---------|-------------|
+| `/permission-guard:setup` | Create venv, install deps, generate user config template, and run tests |
+| `/permission-guard:show` | Display effective config (defaults merged with user overrides, with diff markers) |
+| `/permission-guard:optimize` | Analyze decision log and suggest config changes to reduce unnecessary prompts |
+| `/permission-guard:permission-test` | Run the validation test suite to verify hook functionality |
 
 ## Dependencies
 
 | Tool | Required | Purpose |
 |------|----------|---------|
 | Python 3 | Yes | Hook script runtime |
-| PyYAML | Optional | Config file loading (falls back to hardcoded defaults) |
+| PyYAML | Required | Config file loading |
 
 ## Plugin Structure
 
@@ -99,15 +131,20 @@ plugins/permission-guard/
 ├── .claude-plugin/
 │   └── plugin.json          # Plugin metadata (name, version, author)
 ├── hooks/
-│   └── hooks.json           # PermissionRequest hook definition
+│   └── hooks.json           # PreToolUse hook definition
 ├── scripts/
 │   ├── permission-fallback  # Main hook script (8-phase validator)
-│   ├── test-permission.sh   # Quick validation test suite
-│   └── setup.sh             # Dependency verification
+│   └── test-permission.sh   # Validation test suite
 ├── config/
-│   └── permission-config.yaml  # Default configuration
+│   └── defaults.yaml        # Default tool rules (allow/ask/rules structure)
 ├── commands/
-│   └── permission-test.md   # /permission-guard:permission-test command
+│   ├── setup.md             # /permission-guard:setup skill
+│   ├── show.md              # /permission-guard:show skill
+│   ├── optimize.md          # /permission-guard:optimize skill
+│   └── permission-test.md   # /permission-guard:permission-test skill
+├── docs/
+│   └── DESIGN.md            # Architecture and design notes
+├── logs/                    # Decision audit log (auto-created)
 ├── README.md                # This file (English)
 ├── README.ja.md             # Japanese version
 └── CHANGELOG.md             # Version history
