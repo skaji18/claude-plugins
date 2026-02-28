@@ -2,27 +2,57 @@
 
 # permission-guard
 
-8-phase Bash command validation hook for [Claude Code](https://claude.com/claude-code). Auto-approves safe commands in `scripts/` and `.claude/hooks/`, blocks shell injection, path traversal, and dangerous patterns.
+Bash command validation hook for [Claude Code](https://claude.com/claude-code) that auto-approves safe commands, blocks shell injection, and prompts for everything else.
 
 ## Overview
 
-When Claude Code requests permission to run a Bash command, this plugin intercepts the request via a `PreToolUse` hook and runs it through an 8-phase validation pipeline. Safe commands (project scripts, read-only file operations within the project) are auto-approved. Dangerous patterns (shell injection, path traversal, destructive operations) trigger the standard permission dialog.
+When Claude Code requests permission to run a Bash command, this plugin intercepts the request via a `PreToolUse` hook and validates it through a multi-stage pipeline. Safe commands (read-only file operations, project-local scripts) are auto-approved without user interaction. Dangerous patterns (shell injection, path traversal, destructive operations) are either blocked outright or escalated to the standard permission dialog.
 
 The goal is to reduce permission fatigue for routine operations while maintaining strong security boundaries.
 
-## Validation Phases
+## Validation Flow
 
-| Phase | Name | Description |
-|-------|------|-------------|
-| S0 | Null byte check | Reject null bytes and empty commands |
-| 1 | Sanitize | Control character rejection, tool_name validation |
-| 1.5 | Strip safe suffixes | Remove safe trailing patterns (`2>&1`, `\|\| true`, etc.) |
-| 2 | Shell syntax | Reject dangerous operators: `;`, `\|`, `&`, `` ` ``, `$()`, redirections, globs |
-| 3 | Parse command | Split into words, identify interpreter vs. direct execution |
-| 4 | Normalize flags | Classify interpreter flags as safe/dangerous |
-| 5 | Normalize path | Resolve to absolute path, check project containment |
-| 6 | Project containment | Auto-approve if command path resolves within project or `allowed_dirs_extra` |
-| 7 | General command | Tool lookup (allow/ask/rules), subcommand matching, path containment for all arguments |
+Every command passes through two stages: **pre-validation** (before compound detection) and **post-validation** (after compound detection).
+
+### Pre-validation
+
+| Step | What it does |
+|------|-------------|
+| **S0 -- Null byte check** | Rejects null bytes and empty commands |
+| **Phase 1 -- Sanitize** | Rejects control characters (0x00-0x1F, 0x7F), Unicode whitespace (U+0085, U+00A0, U+2000-U+200B, etc.), and non-Bash tool names |
+| **Phase 1.5 -- Strip safe suffixes** | Iteratively removes safe trailing patterns (e.g. `2>/dev/null`) so they do not interfere with later checks |
+| **Phase 2 -- Shell syntax** | Rejects dangerous shell constructs: backtick substitution, background execution, command substitution, variable expansion, environment variable assignment, tilde expansion, glob/brace expansion, interpreter-path concatenation, and quoted command names |
+
+### Compound detection
+
+After pre-validation, a regex determines whether the command is compound (contains pipes, chains, semicolons, or redirections).
+
+**Simple commands** go to `validate_single_command`:
+
+| Check | Result |
+|-------|--------|
+| Command is in the NEVER_SAFE set (`sudo`, `su`) | ask |
+| Command path resolves within the project directory (via `normpath`) | allow |
+| Command found in `tools` dict as a simple `"allow"` or `"ask"` entry | that value |
+| Command found in `tools` dict as a rule entry -- check `dangerous_flags`, `ask` subcommands, then fall back to `default` | allow or ask |
+| Command not in `tools` dict at all | ask (`unknown_command`) |
+
+**Compound commands** go to `validate_compound_command`:
+
+1. **Pipe right-side check** -- if any command after a pipe is in `pipe_deny_right` (shells, interpreters, `eval`, `exec`, `xargs`), deny immediately
+2. **Segment split** -- break into command segments and redirect segments
+3. **Per-segment validation** -- each command segment is validated via `validate_single_command`; each redirect target is checked for project containment (`/dev/null` is always allowed)
+4. **Aggregation** -- if any segment is non-allow, that result is returned; if all segments are allow, the compound command is allowed
+
+### Decision outputs
+
+| Decision | Meaning |
+|----------|---------|
+| **allow** | Auto-approved, no user prompt |
+| **ask** | Escalated to Claude Code's permission dialog |
+| **deny** | Hard-blocked, command cannot run |
+
+Pre-validation failures and dangerous pipe targets produce **deny**. NEVER_SAFE and unknown commands produce **ask**. Everything else follows the tools configuration.
 
 ## Installation
 
@@ -40,26 +70,30 @@ After installation, run the setup skill to create a venv, install dependencies, 
 
 ### 2-Layer Config Merge
 
-The plugin uses a 2-layer configuration merge:
-
 | Layer | Source | Purpose |
 |-------|--------|---------|
-| 1 | `config/defaults.yaml` (plugin defaults) | Base rules for all tools |
-| 2 | `.claude/permission-guard.yaml` (user overrides) | Project-specific additions/removals |
+| 1 | `config/defaults.yaml` | Base rules shipped with the plugin |
+| 2 | `.claude/permission-guard.yaml` | Project-specific user overrides |
 
-### Plugin Defaults (`config/defaults.yaml`)
+### tools -- Unified Structure (3 entry types)
 
-The `tools` key uses a unified structure with three value types:
-
-**Simple entries** — a single string: `"allow"` or `"ask"`
+**Simple allow** -- auto-approved unconditionally:
 
 ```yaml
 tools:
-  ls: "allow"     # always auto-approved
-  rm: "ask"       # always triggers dialog
+  ls: "allow"
+  cat: "allow"
 ```
 
-**Rule entries** — a map for tools that need subcommand-level control:
+**Simple ask** -- always triggers the permission dialog:
+
+```yaml
+tools:
+  curl: "ask"
+  rm: "ask"
+```
+
+**Rule entry** -- subcommand and flag-level control:
 
 ```yaml
 tools:
@@ -69,28 +103,23 @@ tools:
     default: "allow"
 ```
 
-**`pipe_deny_right`** — commands that are always blocked when appearing as the right side of a pipe:
+The `ask` list supports multi-word subcommands (e.g., `"pr merge"`). The `dangerous_flags` list supports compound short-flag decomposition (`-rf` checks `-r` and `-f` individually).
 
-```yaml
-pipe_deny_right:
-  - bash
-  - sh
-  - python
-  - node
-  # ...
-```
+### pipe_deny_right
+
+Commands blocked when they appear on the right side of a pipe. Defaults include: `bash`, `sh`, `zsh`, `ksh`, `fish`, `csh`, `tcsh`, `python`, `python3`, `perl`, `ruby`, `node`, `eval`, `exec`, `xargs`.
 
 ### User Overrides (`.claude/permission-guard.yaml`)
 
-Created automatically by `/permission-guard:setup`. Supports the following keys:
+Created automatically by `/permission-guard:setup`.
 
 | Key | Type | Description |
 |-----|------|-------------|
-| `tools_add` | map | Add tools (simple or rule entries) on top of defaults |
-| `tools_remove` | array | Remove tool names from the defaults |
-| `pipe_deny_right_add` | array | Add entries to the `pipe_deny_right` list |
-| `allowed_dirs_extra` | array | Additional directories outside the project to allow |
-| `audit_log_path` | string | Override the decision log path (default: `logs/decisions.jsonl`) |
+| `tools_add` | map | Add or override tool entries on top of defaults |
+| `tools_remove` | list | Remove tool names from defaults |
+| `pipe_deny_right_add` | list | Add entries to the pipe deny list |
+| `allowed_dirs_extra` | list | Additional directories outside the project to allow |
+| `audit_log_path` | string | Override the audit log path |
 
 Example:
 
@@ -119,35 +148,33 @@ audit_log_path: ""
 
 ## Dependencies
 
-| Tool | Required | Purpose |
-|------|----------|---------|
-| Python 3 | Yes | Hook script runtime |
-| PyYAML | Required | Config file loading |
+- **Python 3** -- hook script runtime
+- **PyYAML** -- config file loading
 
 ## Plugin Structure
 
 ```
 plugins/permission-guard/
 ├── .claude-plugin/
-│   └── plugin.json          # Plugin metadata (name, version, author)
+│   └── plugin.json            # Plugin metadata
 ├── hooks/
-│   └── hooks.json           # PreToolUse hook definition
+│   └── hooks.json             # PreToolUse hook definition
 ├── scripts/
-│   ├── permission-fallback  # Main hook script (8-phase validator)
-│   └── test-permission.sh   # Validation test suite
+│   ├── permission-fallback    # Main validation script
+│   └── test-permission.sh     # Validation test suite
 ├── config/
-│   └── defaults.yaml        # Default tool rules (allow/ask/rules structure)
+│   └── defaults.yaml          # Default tool rules
 ├── commands/
-│   ├── setup.md             # /permission-guard:setup skill
-│   ├── show.md              # /permission-guard:show skill
-│   ├── optimize.md          # /permission-guard:optimize skill
-│   └── permission-test.md   # /permission-guard:permission-test skill
+│   ├── setup.md               # /permission-guard:setup
+│   ├── show.md                # /permission-guard:show
+│   ├── optimize.md            # /permission-guard:optimize
+│   └── permission-test.md     # /permission-guard:permission-test
 ├── docs/
-│   └── DESIGN.md            # Architecture and design notes
-├── logs/                    # Decision audit log (auto-created)
-├── README.md                # This file (English)
-├── README.ja.md             # Japanese version
-└── CHANGELOG.md             # Version history
+│   └── DESIGN.md              # Architecture and design notes
+├── logs/                      # Decision audit log (auto-created)
+├── README.md                  # This file (English)
+├── README.ja.md               # Japanese version
+└── CHANGELOG.md               # Version history
 ```
 
 ## License

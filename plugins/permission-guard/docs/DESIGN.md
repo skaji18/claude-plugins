@@ -1,278 +1,323 @@
-# permission-guard Design Document
+# permission-guard 設計ドキュメント
 
-## 1. hookの存在意義（Why）
+## 1. hookの存在意義
 
-Claude Codeのネイティブ権限システム（`settings.json`の`allow`/`ask`/`deny`）は、表現力に限界がある:
+Claude Code は `settings.json` のネイティブ権限システム（`allow` / `ask` / `deny`）でツール実行を制御する。しかしこのシステムはツール名単位の粗い粒度でしか判定できない。
 
-- **ネイティブ`deny`は禁止範囲が広くなりがち**: コマンド全体をブロックすると、安全な用途まで制限され、ユーザー利便性が著しく低下する
-- **ネイティブ`allow`は許可範囲が広くなりがち**: コマンド全体を自動承認すると、危険な用途まで許可されるため、エンタープライズ環境では採用困難
+ネイティブシステムが抱える構造的問題:
 
-permission-guardフックは、この**粒度の粗さと安全性のギャップを埋める**ために存在する。
+- **`deny` は過剰に制限する**: `Bash` ツール全体を deny にすると、`ls` も `git status` も実行不能になる
+- **`allow` は過剰に許可する**: `Bash` ツール全体を allow にすると、`rm -rf /` も `curl | bash` も自動承認される
+- **`ask` は判定を放棄する**: 全コマンドでユーザーに確認ダイアログが出る。安全なコマンドでも毎回承認が必要になり、1セッションで数十回の確認が発生する
 
-### 精密判定の具体例
+permission-guard hook はこの粒度ギャップを埋める。`ask` に設定されたツールに対して呼び出され、コマンドの内容・引数・パスを精密に解析し、安全なものは自動許可（allow）、判断できないものはユーザー確認（ask）、明らかに危険なものはブロック（deny）に振り分ける。
 
-hookが提供する「コンテキスト依存の精密判定」:
+具体的に hook が提供する精密判定:
 
-1. **コマンドパス包含チェック**: `.venv/bin/pytest tests/` → allow（プロジェクト内コマンド）/ `/tmp/evil.sh` → ask（外部）
-2. **引数パス包含チェック**: `python3 scripts/analyze.py` → allow（プロジェクト内）/ `python3 /tmp/evil.py` → ask（外部）
-3. **サブコマンド粒度**: `git status` → allow / `git push` → ask
-4. **危険フラグ検出**: `git commit` → allow / `git push --force` → ask
-
-これらは、ネイティブ権限システムでは「`bash`全体をallow/deny」の二択しかない判定を、**実行コンテキストに応じて適切にルーティング**できる。
+| 場面 | ネイティブ権限だけの場合 | hook による判定 |
+|---|---|---|
+| `git status` vs `git push --force` | 両方 ask（または両方 allow） | 前者 allow、後者 ask |
+| `.venv/bin/pytest` vs `/tmp/evil.sh` | 両方 ask | 前者 allow（プロジェクト内）、後者 ask |
+| `ls -la` vs `sudo rm -rf /` | 両方 ask | 前者 allow、後者 ask（NEVER_SAFE） |
 
 ## 2. 評価順序と責務範囲
 
-hookの呼び出しタイミングとネイティブ権限の関係:
+hook はネイティブ権限の「後段」で動作する。呼び出しフローは以下の通り:
 
 ```
-settings.json deny → block (hookは呼ばれない)
-settings.json allow → allow (hookは呼ばれない)
-ask or マッチなし → PreToolUse → hook評価
+settings.json deny  ->  block（hookは呼ばれない）
+settings.json allow ->  allow（hookは呼ばれない）
+settings.json ask   ->  hookが呼び出され、精密判定を実行
 ```
 
-### hookの責務
-
-- **責務範囲**: ネイティブ`allow`/`deny`に引っかからなかったコマンドに対する精密判定
-- **提供価値**: 「列挙を不要にすること」ではなく、「列挙されたコマンドに対してより精密な判定を行うこと」
-
-例: `settings.json`で`bash`を`ask`に設定した場合、hookは`bash scripts/safe.sh`と`bash -c "code"`を識別し、前者のみ自動承認できる。これにより、安全な用途のUXを損なわずセキュリティを確保する。
+hook の責務は明確に限定される: **ネイティブの `deny` でも `allow` でもないコマンドに対して、コンテキスト依存の判定を行うこと**。ネイティブの `deny` / `allow` を上書きする能力は持たない。
 
 ## 3. 設計原則
 
 ### deny-by-default
 
-- **原則**: 未知コマンドは`ask`（ユーザー確認）
-- **実装**: `known_safe`リスト（~40-50コマンド）による明示的承認
-- **根拠**: 新しいコマンド/インタプリタ/危険フラグの組み合わせは無限にあり、allowlist方式でなければ将来のバイパスベクターを防げない
+`tools` 辞書に登録されていないコマンドは `ask`（ユーザー確認）になる。理由は単純で、コマンド・フラグ・引数の組み合わせは事実上無限にあるため、「危険なものを列挙して弾く」アプローチ（danger-enumeration）では必ず漏れが生じる。逆に「安全なものだけ列挙して通す」アプローチ（safe-enumeration）であれば、未知のコマンドは自動的に安全側に倒される。
 
 ### fail-closed
 
-- **原則**: 判定できない場合は安全側（`ask`）に倒す
-- **実装例**:
-  - Phase 4: unknown flag → `ask`
-  - Phase 7B2: サブコマンド抽出失敗 → `ask`
-  - 設定ファイル読み込み失敗 → `ask`
+判定不能な状態では常に `ask` に倒す。具体例:
 
-### 安全列挙（Safe Enumeration）
+- `tools` 辞書に未登録のコマンド -> `ask`（`unknown_command`）
+- 設定ファイル読み込み失敗 -> デフォルト設定で続行（`tools` が十分に保守的）
+- 監査ログ書き込み失敗 -> 例外を握り潰し、判定自体は正常に完了させる
 
-- **danger-enumerationの問題**: 危険なサブコマンドを列挙する方式（`subcommand_ask`）は構造的に漏れやすい（cmd_097で7+個の破壊的gitコマンドの列挙漏れを確認）
-- **safe-enumerationへの移行**: 安全なサブコマンドを列挙し、未知は`ask`（fail-closed）
-- **設計**:
-  ```yaml
-  subcommand_rules:
-    git:
-      allow: [status, log, diff, show, branch, tag, ...]  # 読み取り専用
-      ask: [push, clean, reset, checkout, ...]  # 明示的確認が必要
-      default_action: ask  # 未知サブコマンドはask
-  ```
-
-### メンテナンスフリー志向
-
-- **静的マッピング管理コストの最小化**: フラグ/サブコマンドの全組み合わせを列挙するアプローチは、ツールのバージョンアップごとにメンテナンスが必要
-- **解決策**:
-  - インタプリタは`known_safe`に含めず、フラグ判定のみ実施（新フラグは自動的にfail-closed）
-  - サブコマンドはティア分類（allow/ask/unknown）で、unknownは自動的にask
-
-### known_safe_extra（ユーザー拡張性）
-
-- **セキュリティフロア維持**: ユーザーは`known_safe_extra`で安全コマンドを追加できるが、baseの`known_safe`から削除は不可
-- **`always_ask`/`subcommand_ask`と同様の設計**: Layer 2/3で追加のみ、削除は不可
-
-## 4. アーキテクチャ（新設計）
-
-### フェーズ構成（8→5に統合予定）
-
-**現行8フェーズ**:
-- S0: null byte check
-- Phase 1: control chars, tool_name validation
-- Phase 1.5: safe suffix stripping (`2>&1`, `|| true`)
-- Phase 2: shell syntax guards（`;`, `|`, `$`, `~`, glob）
-- Phase 3: parse command（split, interpreter detection）
-- Phase 4: flag classification（safe/dangerous/unknown）
-- Phase 5: path normalization（`../` resolution）
-- Phase 6: project containment（コマンドパス・リダイレクトパスのプロジェクト包含チェック）
-- Phase 7: general command（tools lookup, subcommand matching, flag checks）
-
-**新5フェーズ設計** (P4で実装予定):
-- Phase 1: Input sanitization（S0+1統合）
-- Phase 2: Command normalization（1.5+2統合）
-- Phase 3: Parse and classify（3+4統合: split + interpreter + flags）
-- Phase 4: Path resolution and containment（5+6統合）
-- Phase 5: Policy evaluation（7を5ステップに分解: known_safe check → always_ask → subcommand_rules → path collection → containment）
-
-### deny-by-default with known_safe
-
-**現状**: Phase 7Dで「パス引数なし」のコマンドは無条件allow（fail-open） → ~30-50%のコマンドがゼロ検証で通過
-
-**実装済み設計**:
-```yaml
-tools:
-  # allowエントリ（自動承認）
-  ls: "allow"
-  cat: "allow"
-  grep: "allow"
-  make: "allow"
-  cargo: "allow"
-  gcc: "allow"
-  # ... ~40コマンド
-
-  # askエントリ（ユーザー確認）
-  curl: "ask"
-  rm: "ask"
-
-  # 複雑エントリ（サブコマンド/フラグ制御）
-  git:
-    ask: ["push", "clean", "filter-branch", "rebase", "reset"]
-    dangerous_flags: ["--force", "-f", "--hard", "-D", "--no-verify"]
-    default: "allow"
-```
-
-- `tools`で`"allow"`以外のコマンド → `ask`
-- データ駆動選定: warn modeで実際のプロジェクトでの使用頻度を測定し、上位40-50コマンドを選定
-
-### 安全列挙（サブコマンド）
-
-**旧設計**: `subcommand_ask`（danger-enumeration） → 破壊的コマンドの列挙漏れリスク
-
-**実装済み設計**: `tools`統一構造でサブコマンド制御
-```yaml
-tools:
-  git:
-    ask: ["push", "clean", "filter-branch", "rebase", "reset"]
-    dangerous_flags: ["--force", "-f", "--hard", "-D", "--no-verify"]
-    default: "allow"  # 未知サブコマンドはallow（default設定で変更可）
-```
-
-### コマンドパス包含（project-contained command auto-allow）
-
-**課題**: `.venv/bin/pytest`, `scripts/deploy.sh` などプロジェクト内のコマンドが `unknown_command` として毎回 `ask` になる
-
-**解決策**: コマンド名に `/` が含まれる場合、絶対パスに解決し `phase_6_project_check()` でプロジェクト包含を判定。包含されていれば auto-allow。
+### NEVER_SAFE ハードコード
 
 ```python
-# validate_single_command() 内、NEVER_SAFE チェック後・tools lookup 前
-if '/' in cmd_name:
-    abs_cmd = canonicalize_path(...)  # 相対 → PROJECT_DIR基準で解決
-    if phase_6_project_check(abs_cmd, config):
-        return ("allow", "project_contained_cmd:...")
+NEVER_SAFE = {"sudo", "su"}
 ```
 
-- 新しい設定キー不要 — 既存の `PROJECT_DIR` + `allowed_dirs_extra` を再利用
-- NEVER_SAFE (`sudo`, `su`) は先にチェックされるため影響なし
-- `/` を含まないコマンド（`ls`, `git` 等）はスキップし、従来通り tools lookup に進む
-- `../../../tmp/evil.sh` のようなパストラバーサルは `normpath` で解決後に包含チェックで弾かれる
-- シンボリックリンク: `normpath`（`realpath` ではない）を使用。`.venv/bin/python` のようなシンボリックリンクはリンク元の位置でプロジェクト包含を判定する（リンク先は `/usr/local/...` 等の外部パスだが、リンク自体はプロジェクト内にある）
+`sudo` と `su` は tools 辞書の判定より前に評価される。設定で上書きすることはできない。ただし判定結果は `deny` ではなく `ask` であり、ユーザーが明示的に承認すれば実行可能である。これは「hookが最終判断を下す」のではなく「ユーザーの注意を促す」という設計思想による。
 
-### パス包含（全引数パス候補化）
+## 4. アーキテクチャ
 
-**現状**: `/`を含む引数のみパス候補 → `cat .env`, `chmod 777 file.py`は検出されない（bare filename blind spot）
+処理は大きく2段構成: **Pre-validation**（複合コマンド分割前の入力検証）と **Command validation**（分割後の個別コマンド判定）。
 
-**新設計**: 全非フラグ引数をパス候補として扱う
-- `cat main.py` → `PROJECT_DIR/main.py`に解決 → 包含チェック実施
-- false rejection不可能: 非パス引数（例: `git status`の`status`）も`PROJECT_DIR/status`に解決されるが、containmentチェックは「プロジェクト内」で通過
+### 4.1 Pre-validation
 
-### フラグ分解（複合短フラグ対応）
+`main()` から順次呼び出される。いずれかのフェーズで `RejectException` が発生すると即座に `output_deny()` で終了する。
 
-**現状**: `bash -xeu script.sh` → unknown flag reject（`-xeu`が長さ!=2）
+#### Phase S0 — Null バイト・空コマンド検査
 
-**新設計**:
+**関数**: `phase_s0_null_byte_check(input_str, command)`
+
+入力 JSON 文字列中の null バイト（バイナリゼロおよびエスケープ済みユニコードゼロ）を検出して拒否する。空文字列コマンドも拒否。JSON インジェクション等の攻撃ベクターを入口で遮断する。
+
+| Reject 理由 | 条件 |
+|---|---|
+| `S0:null_byte` | バイナリ null を検出 |
+| `S0:json_null` | エスケープ済み unicode null を検出 |
+| `S0:empty_command` | コマンド文字列が空 |
+
+#### Phase 1 — 制御文字・Unicode 空白・ツール名検査
+
+**関数**: `phase_1_sanitize(input_data, command)`
+
+視認困難な文字による難読化攻撃を防ぐ。また `tool_name` が `"Bash"` 以外の場合（想定外のツール呼び出し）を拒否する。
+
+| Reject 理由 | 条件 |
+|---|---|
+| `S1:control_chars` | 制御文字（U+0001 - U+001F, U+007F） |
+| `S1:unicode_whitespace` | Unicode 空白文字（U+0085, U+00A0, U+2000 - U+200B 等） |
+| `S2:tool_name` | `tool_name != "Bash"` |
+
+#### Phase 1.5 — 安全サフィックス除去
+
+**関数**: `phase_1_5_strip_safe_suffixes(command)`
+
+コマンド末尾の安全なサフィックスを while ループで反復的に除去し、コアコマンドを露出させる。拒否は行わない。
+
+除去対象:
+
+| パターン | 例 |
+|---|---|
+| `|| true` | `cmd || true` |
+| `|| echo "literal"` | 安全な内容のみ |
+| `|| echo 'literal'` | シングルクォート内容 |
+| `&& echo "literal"` | 同上 |
+| `&& echo 'literal'` | 同上 |
+| `2>&1` | stderr to stdout リダイレクト |
+| `2>/dev/null` | stderr 破棄 |
+
+反復除去のため `cmd 2>&1 || true` のように複数サフィックスが連なっていても処理できる。
+
+#### Phase 2 — シェル構文ガード
+
+**関数**: `phase_2_shell_syntax(command)`
+
+シェルが解釈する危険な構文を静的に検出して拒否する。hook はシェルインタプリタを通さないため、これらの構文が残っていると実行時に想定外の挙動を引き起こす可能性がある。
+
+| Reject 理由 | 検出対象 |
+|---|---|
+| `P1:backtick_substitution` | バッククォート |
+| `P1:background_execution` | `&`（バックグラウンド実行） |
+| `P3:cmd_substitution` | `$(...)` コマンド置換 |
+| `P4:var_expansion` | `$VAR` 変数展開 |
+| `P5:env_assignment` | `FOO=bar cmd` 形式の環境変数代入 |
+| `P6:tilde_expansion` | `~` チルダ展開 |
+| `P7:glob_chars` | `*`, `?`, `{`, `}` グロブ・ブレース展開 |
+| `P2:no_space_after_interpreter` | インタプリタ名+パス連結 |
+| `P2:quoted_command_name` | コマンド名がクォートで囲まれている |
+
+### 4.2 複合コマンド検出と分岐
+
+Phase 2 通過後、正規表現でコマンドが複合か単純かを判定する。パイプ、論理演算子、セミコロン、リダイレクトのいずれかを含む場合は複合コマンドとして扱う。
+
+- **複合コマンド** -> `validate_compound_command()`
+- **単純コマンド** -> `validate_single_command()`
+
+### 4.3 validate_single_command — 単一コマンド判定
+
+`validate_single_command(command, config)` は以下の順序で判定を行う:
+
+1. **NEVER_SAFE チェック**: コマンドの basename が `NEVER_SAFE` に含まれていれば即座に `("ask", "never_safe:{cmd}")` を返す
+2. **プロジェクト内コマンド自動許可**: コマンド名にスラッシュが含まれる場合、パスを正規化してプロジェクト内包含を判定（詳細は第6章）
+3. **tools 辞書照合**:
+   - **未登録** -> `("ask", "unknown_command:{cmd}")`
+   - **文字列エントリ** (`"allow"` / `"ask"`) -> その値をそのまま返す
+   - **マップエントリ** -> `dangerous_flags` 一致チェック -> `ask` サブコマンド一致チェック -> いずれにも該当しなければ `default` 値を返す
+
+マップエントリのサブコマンド照合はスペース区切り DSL に対応している。例えば `"pr merge"` というエントリは `gh pr merge` の2段サブコマンドにマッチする。
+
+`dangerous_flags` の判定には複合短フラグの分解がある。`-rf` は `-r` と `-f` に個別分解されてチェックされる。
+
+### 4.4 validate_compound_command — 複合コマンド判定
+
+`validate_compound_command(command, config)` は以下のステップで処理する:
+
+1. **パイプ右辺チェック**: `|` で分割し、2番目以降のセグメントの先頭コマンド名が `pipe_deny_right` に含まれていれば即座に拒否。シェル・インタプリタへのパイプ経由コード注入を防ぐ
+2. **セグメント分割**: `split_compound()` でコマンドセグメントとリダイレクトセグメントに分離
+3. **個別検証**:
+   - `cmd` セグメント -> `validate_single_command()` で判定
+   - `redirect_out` / `redirect_in` セグメント -> `/dev/null` は即 allow、それ以外は `phase_5_normalize_path()` でプロジェクト内包含を検証
+4. **集約**: 1つでも非 allow があれば最初の非 allow 結果を返す。全て allow なら理由を `+` で結合して返す（例: `compound:tools:git+tools:grep`）
+
+### 4.5 split_compound — 複合コマンド分割
+
+`split_compound(command)` は `Segment` データクラスのリストを返す:
+
 ```python
-# Step 1: 複合フラグを個別文字に分解
-flags = [c for c in word[1:]]  # "-xeu" → ['x', 'e', 'u']
-
-# Step 2: dangerous check first (重要)
-for flag in flags:
-    if flag in dangerous_flags:
-        reject("dangerous_flag")
-
-# Step 3: safe check
-for flag in flags:
-    if flag not in safe_flags:
-        reject("unknown_flag")
+@dataclass
+class Segment:
+    command: str        # コマンド文字列
+    seg_type: str       # "cmd", "redirect_out", "redirect_in"
+    redirect_path: str  # リダイレクト先/元パス
 ```
 
-### インタプリタ拡張
+処理手順:
+1. リダイレクトパターンを正規表現で抽出して `redirect_out` / `redirect_in` セグメントを生成
+2. リダイレクト部分を除去した残りを `||`, `&&`, `|`, `;` で分割して `cmd` セグメントを生成
 
-**現状**: `node`, `perl`, `ruby`, `php`は`always_ask`に入っている → フラグレベル判定なし
+### 4.6 出力ルーティング
 
-**新設計**:
+`main()` は `validate_single_command` / `validate_compound_command` の返値に基づき、3種類の出力関数を呼び分ける:
+
+- **allow** -> `output_allow(reason)` — 自動承認、ユーザーへの確認なし
+- **deny** -> `output_deny(reason)` — ハードブロック、実行不可。以下の条件で deny と判定:
+  - Pre-validation フェーズ（S0, 1, 2）で `RejectException` が発生
+  - 理由文字列が `dangerous_pipe_target:` で始まる
+  - 理由が `deny_reasons` セット（`null_byte`, `json_error`, `empty_command`, `control_char`, `unicode_whitespace`, `unknown_tool`, `no_segments`）に含まれる
+- **ask** -> `output_ask(reason)` — 上記以外の全ての非 allow。ユーザーに確認ダイアログを表示
+
+## 5. tools 統一構造
+
+### 3種類のエントリ形式
+
+#### 単純 allow エントリ
+
 ```yaml
-interpreters:
-  bash:
-    safe_flags: [n, x, e, u, v, E, f, r]  # 拡充
-  sh:
-    safe_flags: [x, e, u, v, E, f, r]
-  node:
-    safe_flags: [e, p, r, i, c, v, ...]
-    dangerous_flags: [e]  # -e with code
-  perl:
-    safe_flags: [w, T, c, ...]
-    dangerous_flags: [e]
-  ruby:
-    safe_flags: [w, d, v, ...]
-    dangerous_flags: [e]
-  php:
-    safe_flags: [v, i, m, ...]
-    dangerous_flags: [r]
-
-interpreters_extra: {}  # ユーザー追加可能
+ls: "allow"
+cat: "allow"
+grep: "allow"
 ```
 
-## 5. known_safeリストの設計思想
+コマンド名が一致すれば即座に `("allow", "tools:{cmd}")` を返す。デフォルト設定には37個の低リスクコマンドが登録されている（`ls`, `cat`, `head`, `tail`, `grep`, `sed`, `awk`, `jq`, `make`, `cargo`, `gcc`, `go`, `diff` 等）。
 
-hookの価値は列挙の**質**にある:
+#### 単純 ask エントリ
 
-### 過少（known_safe不足）の問題
-
-- `known_safe`が10個しかない → 残り全てのコマンドで`ask`連発
-- 結果: 「ネイティブdenyが広すぎる」と同じUX劣化
-- 例: `make`, `cargo`, `npm test`などの開発コマンドが全てask → 1セッション20-30回の確認ダイアログ
-
-### 過剰（known_safe過多）の問題
-
-- `known_safe`が200個ある → hookの精密判定を活かせない
-- 結果: セキュリティ面でネイティブallowと同等になり、hookの存在意義が薄れる
-
-### 最適化戦略
-
-1. **データ駆動選定**: warn modeで実運用データ収集 → 使用頻度上位40-50コマンドを選定
-2. **ティア分類**:
-   - Tier 1 (高頻度・低リスク): `ls`, `cat`, `grep`, `git`, `make`, `cargo`, `npm`, `gcc`, `python3`, `node`
-   - Tier 2 (中頻度): `awk`, `sed`, `jq`, `curl`（ただし`curl`は`always_ask`に残す可能性）
-3. **known_safe_extra escape hatch**: ユーザー環境固有コマンド（`kubectl`, `terraform`, `ansible`等）は各自追加
-
-## 6. 制約と限界
-
-### スクリプト内容検査不能（全権限システム共通の限界）
-
-- hookが検査できるのは**コマンドライン引数のみ**
-- スクリプトファイルの内容（`bash scripts/safe.sh`の`safe.sh`の中身）は検査できない
-- 緩和策: `scripts/`ディレクトリ自体を信頼境界とし、そのディレクトリへの書き込み権限管理をリポジトリ運用でカバー
-
-### cwd前提（API制約）
-
-- hookは実行時の**cwd（current working directory）を直接取得できない**（PreToolUseにcwdフィールドが含まれていない）
-- 現在の実装: `PROJECT_DIR`をベースにパス解決
-- 問題: 先行する`cd`コマンドでcwdがずれた場合、bare filename解決が誤る可能性
-- 緩和策: Phase 7Dで`cd /outside`コマンド自体を検出しreject（ただし、settings.json設定次第で漏れる可能性あり）
-
-### 間接参照不可（stdin, 環境変数経由のパス）
-
-以下のパターンは追跡不能:
-```bash
-cat < /etc/passwd
-bash -c "$MALICIOUS_CODE"
-python3 <<< "import os; os.system('rm -rf /')"
-FILE=/tmp/evil.sh bash "$FILE"
+```yaml
+curl: "ask"
+rm: "ask"
+pip: "ask"
 ```
 
-**緩和策**:
-- Phase 2で`<`, `>`をreject（stdin/stdout redirection guard）
-- Phase 2 P4で`$`をreject（variable expansion guard）
-- `always_ask`に`bash`, `sh`を含めない代わりに、Phase 4で厳格なフラグ判定を実施（`-c`は常にreject）
+コマンド名が一致すれば即座に `("ask", "tools:{cmd}")` を返す。ネットワークアクセス（`curl`, `wget`, `ssh`）、破壊的操作（`rm`, `rmdir`, `mv`）、パッケージ管理（`pip`, `pip3`）等、15個が登録されている。
 
-### 限界の受容
+#### マップエントリ
 
-これらの限界は、**全ての静的解析ベース権限システムに共通**する。完全な保護は実行時サンドボックス（seccomp, AppArmor等）でのみ可能だが、それらはClaude Codeの実行モデル（ホストシェル直接実行）と両立しない。
+```yaml
+git:
+  ask: ["push", "clean", "filter-branch", "rebase", "reset"]
+  dangerous_flags: ["--force", "-f", "--hard", "-D", "--no-verify"]
+  default: "allow"
+```
 
-hookの役割は「**実用的な範囲で検出可能な危険パターンを高精度でフィルタリングすること**」であり、100%の保護は目指さない。
+サブコマンドとフラグの粒度で判定を分岐させる。マップに含まれるキー:
+
+| キー | 型 | 役割 |
+|---|---|---|
+| `ask` | list | このサブコマンドに一致したら ask。スペース区切り DSL 対応（例: `"pr merge"`） |
+| `dangerous_flags` | list | 引数にこのフラグがあれば ask。複合短フラグ分解あり |
+| `default` | string | 上記いずれにも該当しない場合の判定（`"allow"` or `"ask"`） |
+
+デフォルト設定のマップエントリ: `git`（default: allow）、`docker`（default: ask）、`gh`（default: ask）、`npm`（default: ask）。
+
+### 2層コンフィグマージ
+
+設定は2層でロードされる:
+
+1. **defaults.yaml**: `{CLAUDE_PLUGIN_ROOT}/config/defaults.yaml`（プラグイン同梱のベースライン）
+2. **ユーザー設定**: `{CLAUDE_PROJECT_DIR}/.claude/permission-guard.yaml`（プロジェクト固有のカスタマイズ）
+
+マージは `merge_config(defaults, user_config)` で行われる:
+
+| キー | マージ方式 |
+|---|---|
+| `tools` | defaults をベースに、`tools_add` で追加/上書き、`tools_remove` で削除 |
+| `pipe_deny_right` | defaults + `pipe_deny_right_add` の和集合 |
+| `allowed_dirs_extra` | ユーザー設定があれば上書き、なければ defaults |
+| `audit_log_path` | ユーザー設定があれば上書き、なければ defaults |
+
+`tools_add` でマップエントリを追加する場合:
+- 既存エントリが文字列なら `{"default": 既存値}` に変換してからマージ
+- `ask` と `dangerous_flags` は和集合（既存リスト + 新規リスト）
+- その他のキーは上書き
+
+この設計により、ユーザーは defaults のセキュリティベースラインを維持しつつ、プロジェクト固有のコマンドを追加できる。`tools_remove` でベースラインのコマンドを削除することもできるが、`NEVER_SAFE` はハードコードのため設定で回避できない。
+
+## 6. プロジェクト内コマンド自動許可
+
+`validate_single_command()` 内で、コマンド名にスラッシュ（`/`）が含まれる場合にプロジェクト内包含を判定する。
+
+処理手順:
+1. 絶対パスならそのまま、相対パスなら `PROJECT_DIR` と結合
+2. `os.path.normpath()` でパスを正規化
+3. 正規化後のパスが `PROJECT_DIR` のプレフィックスで始まるか判定
+4. 一致しなければ `allowed_dirs_extra` の各ディレクトリについても判定
+5. いずれかに包含されていれば `("allow", "project_contained_cmd:{basename}")` を返す
+
+**`normpath` を使い `realpath` を使わない理由**: `.venv/bin/python` はシンボリックリンクであり、`realpath()` で解決すると `/usr/local/bin/python3` 等のプロジェクト外パスになる。しかしリンク自体はプロジェクトディレクトリ内に存在しており、そのパス位置で判定するのが正しい。`normpath()` は `..` や `.` を解決するがシンボリックリンクは追跡しないため、パスの字面上の位置で包含判定ができる。
+
+なお、スラッシュを含まないコマンド（`ls`, `git` 等）はこの判定をスキップし、従来通り tools 辞書照合に進む。`../../../tmp/evil.sh` のようなパストラバーサルは `normpath` で解決後に包含チェックで検出される。
+
+## 7. 複合コマンド処理の詳細
+
+### パイプ右辺拒否
+
+`pipe_deny_right` リストに含まれるコマンドがパイプの右辺に来た場合、即座に拒否する。
+
+デフォルト値（14個）: bash, sh, zsh, ksh, fish, csh, tcsh, python, python3, perl, ruby, node, eval, exec, xargs
+
+これはコード注入の典型パターンを防ぐ。パイプ左辺は任意のコマンドでよいが、右辺がインタプリタやシェルであれば、左辺の出力がコードとして実行されるリスクがある。
+
+### リダイレクト先のプロジェクト包含チェック
+
+リダイレクトセグメントに対しては `phase_5_normalize_path()` でパスを正規化し、プロジェクト内に収まっているか検証する。
+
+- `/dev/null` -> 即 allow
+- プロジェクト内パス -> allow（`redirect:project_contained`）
+- プロジェクト外パス -> deny（`redirect:outside_project:{path}`）
+
+リダイレクト先のチェックでは `canonicalize_path()`（`os.path.realpath()` ベース）を使用する。これはコマンドパスの自動許可（第6章の `normpath`）とは異なる設計判断である。リダイレクト先はファイルの実体位置が重要であり、シンボリックリンク経由でプロジェクト外に書き込むことを防ぐ必要があるため。
+
+## 8. 制約と限界
+
+### スクリプト内容検査不能
+
+hook が検査できるのはコマンドライン引数のみである。`bash scripts/deploy.sh` の `deploy.sh` の中身は見えない。プロジェクト内スクリプトは自動許可されるため、リポジトリへの書き込み権限管理がセキュリティの前提となる。
+
+### cwd 前提
+
+PreToolUse hook の入力に cwd フィールドは含まれない。相対パスの解決は全て `PROJECT_DIR` を基準に行う。先行する `cd` コマンドで実際の cwd がずれていた場合、パス解決が不正確になる可能性がある。
+
+### 間接参照不可
+
+以下のパターンはコマンドライン引数の静的解析では追跡できない:
+
+- 環境変数経由のコード実行（ただし Phase 2 で変数展開構文は拒否される）
+- ヒアストリングによるコード注入（ただし Phase 2 でリダイレクト構文は検出される）
+- 実行時に生成されるパス（先行コマンドの出力を参照する場合）
+
+これらは全ての静的解析ベース権限システムに共通する限界である。hook は「コマンドライン引数から検出可能な危険パターンを高精度でフィルタリングすること」を目的としており、完全な保護は目指さない。完全な隔離にはランタイムサンドボックス（seccomp, AppArmor 等）が必要だが、それは Claude Code のホストシェル直接実行モデルとは別のレイヤーの話である。
+
+## 監査ログ
+
+全ての判定結果は JSONL 形式で監査ログに記録される。
+
+出力先の決定順序:
+1. `config.audit_log_path` が設定されていればそれ（チルダ展開あり）
+2. `CLAUDE_PLUGIN_ROOT` 環境変数があれば `{CLAUDE_PLUGIN_ROOT}/logs/decisions.jsonl`
+3. いずれもなければログ出力しない
+
+ログ形式:
+
+```json
+{"ts": "2026-02-28T12:34:56Z", "decision": "allow", "command": "git status", "phase": "tools_default", "reason": "tools_default:git"}
+```
+
+ログ書き込みの例外は握り潰される。監査ログの失敗が hook 本体の判定を阻害してはならない。
