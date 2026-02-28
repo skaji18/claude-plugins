@@ -165,8 +165,9 @@ def phase_s0_null_byte_check(input_str, command):
 def phase_1_sanitize(input_data, command):
     """Phase 1: Control chars, tool_name validation, Unicode whitespace."""
     # Guard S1: Control characters (0x00-0x1F, 0x7F)
-    # Using regex to match any control character
-    if re.search(r'[\x00-\x1f\x7f]', command):
+    # Allow tab (0x09) and newline (0x0a) — commonly used in multi-line commands
+    # and heredocs. Block all other control characters.
+    if re.search(r'[\x00-\x08\x0b-\x1f\x7f]', command):
         reject("S1:control_chars")
 
     # Guard S1.5 (F-016): Reject Unicode whitespace characters
@@ -267,6 +268,39 @@ def phase_1_5_strip_safe_suffixes(command):
     return command
 
 
+def _strip_quoted_content(command):
+    """Strip content inside quotes, replacing with safe placeholders.
+
+    Single-quoted: everything between ' and ' is replaced.
+    Double-quoted: everything between " and " is replaced (backslash-escaped \" skipped).
+    This allows P3/P4/P7 checks to ignore characters inside quotes.
+    """
+    result = []
+    i = 0
+    while i < len(command):
+        if command[i] == "'":
+            j = command.find("'", i + 1)
+            if j == -1:
+                j = len(command)
+            result.append("'_Q_'")
+            i = j + 1
+        elif command[i] == '"':
+            j = i + 1
+            while j < len(command):
+                if command[j] == '\\':
+                    j += 2
+                    continue
+                if command[j] == '"':
+                    break
+                j += 1
+            result.append('"_Q_"')
+            i = j + 1
+        else:
+            result.append(command[i])
+            i += 1
+    return ''.join(result)
+
+
 def phase_2_shell_syntax(command):
     """Phase 2: Reject dangerous shell syntax."""
     # Guard P1: Backtick command substitution (pipe/chain/;/>/< handled by compound validation)
@@ -277,13 +311,18 @@ def phase_2_shell_syntax(command):
     if re.search(r'(?<!&)&(?!&)', command):
         reject("P1:background_execution")
 
+    # Strip quoted content for expansion checks (P3/P4/P7).
+    # Dangerous characters inside quotes are not shell-expanded.
+    stripped = _strip_quoted_content(command)
+
     # Guard P3: Command substitution $(...)
-    if re.search(r'\$\(', command):
+    if re.search(r'\$\(', stripped):
         reject("P3:cmd_substitution")
 
     # Guard P4 (F-014): Variable/arithmetic expansion
     # Broadened regex: catch $!, $#, $@, $-, $? and all other $X patterns
-    if re.search(r'\$[^\s]', command):
+    # Uses stripped command: "$VAR" inside quotes is safe (no shell expansion)
+    if re.search(r'\$[^\s]', stripped):
         reject("P4:var_expansion")
 
     # Guard P5: Environment variable assignment
@@ -295,7 +334,8 @@ def phase_2_shell_syntax(command):
         reject("P6:tilde_expansion")
 
     # Guard P7: Glob/brace expansion
-    if re.search(r'[*?\[{]', command):
+    # Uses stripped command: [brackets] inside quotes are not glob patterns
+    if re.search(r'[*?\[{]', stripped):
         reject("P7:glob_chars")
 
     # Guard P8: No-space interpreter (python3scripts/foo.py, bashscripts/run.sh)
