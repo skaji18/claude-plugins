@@ -102,10 +102,13 @@ def merge_config(base, delta):
     result = dict()
     result["tools"] = effective_tools
     result["pipe_deny_right"] = effective_pipe
-    result["allowed_dirs_extra"] = delta.get("allowed_dirs_extra",
-                               base.get("allowed_dirs_extra", list()))
-    result["audit_log_path"] = delta.get("audit_log_path",
-                           base.get("audit_log_path", ""))
+    # allowed_dirs_extra: use delta only if non-empty, otherwise inherit base
+    # This prevents an empty template (allowed_dirs_extra: []) from wiping global values
+    delta_dirs = delta.get("allowed_dirs_extra", list())
+    result["allowed_dirs_extra"] = delta_dirs if delta_dirs else base.get("allowed_dirs_extra", list())
+    # audit_log_path: use delta only if non-empty
+    delta_audit = delta.get("audit_log_path", "")
+    result["audit_log_path"] = delta_audit if delta_audit else base.get("audit_log_path", "")
     return result
 
 
