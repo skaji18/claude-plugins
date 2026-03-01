@@ -5,6 +5,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 HOOK="$SCRIPT_DIR/permission-fallback"
 export CLAUDE_PLUGIN_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+export PG_NO_AUDIT=1
 
 # HOME isolation: use temp HOME to prevent real ~/.claude/permission-guard.yaml
 # from interfering with tests

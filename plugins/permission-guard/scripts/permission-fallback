@@ -512,6 +512,8 @@ def _get_audit_log_path():
 
 def _write_audit_log(decision, reason):
     """Write a single JSONL line to the audit log."""
+    if os.environ.get("PG_NO_AUDIT") == "1":
+        return
     try:
         audit_path = _get_audit_log_path()
         if not audit_path:
