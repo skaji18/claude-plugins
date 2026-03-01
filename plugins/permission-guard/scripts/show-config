@@ -1,0 +1,183 @@
+#!/usr/bin/env python3
+"""show-config — Display effective permission-guard config with 3-tier source attribution."""
+
+import os
+import sys
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from pg_config import load_defaults, load_global_config, load_project_config, merge_config, get_audit_log_path
+
+
+def main():
+    defaults = load_defaults()
+    global_cfg = load_global_config()
+    project_cfg = load_project_config()
+
+    intermediate = merge_config(defaults, global_cfg)
+    effective = merge_config(intermediate, project_cfg)
+
+    # Normalize tools_add from list to dict (same as pg_config.merge_config)
+    def normalize_tools_add(cfg):
+        ta = cfg.get("tools_add", {})
+        if isinstance(ta, list):
+            flat = {}
+            for item in ta:
+                if isinstance(item, dict):
+                    flat.update(item)
+            return flat
+        return ta
+
+    global_adds = normalize_tools_add(global_cfg)
+    global_removes = set(global_cfg.get("tools_remove", []))
+    project_adds = normalize_tools_add(project_cfg)
+    project_removes = set(project_cfg.get("tools_remove", []))
+
+    # Classify effective tools
+    allow_tools = []
+    ask_tools = []
+    rule_tools = []
+    for name, val in sorted(effective.get("tools", {}).items()):
+        if isinstance(val, str):
+            if val == "allow":
+                allow_tools.append(name)
+            else:
+                ask_tools.append(name)
+        else:
+            rule_tools.append((name, val))
+
+    # Source attribution helper
+    def source_tag(name):
+        tags = []
+        if name in project_adds:
+            tags.append("+project")
+        elif name in global_adds:
+            tags.append("+global")
+        if name in project_removes:
+            tags.append("-project")
+        elif name in global_removes:
+            tags.append("-global")
+        return tags
+
+    # Config source status
+    plugin_root = os.environ.get("CLAUDE_PLUGIN_ROOT", "")
+    if not plugin_root:
+        plugin_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    defaults_path = os.path.join(plugin_root, "config", "defaults.yaml")
+    home = os.path.expanduser("~")
+    global_path = os.path.join(home, ".claude", "permission-guard.yaml")
+    project_dir = os.environ.get("CLAUDE_PROJECT_DIR", "")
+    project_path = os.path.join(project_dir, ".claude", "permission-guard.yaml") if project_dir else "(CLAUDE_PROJECT_DIR not set)"
+
+    default_tools_count = len(defaults.get("tools", {}))
+
+    print("Effective permission-guard config")
+    print()
+    print("== config sources ==")
+    print(f"  default:  {defaults_path}  ({default_tools_count} tools)")
+    if os.path.exists(global_path):
+        g_count = len(global_adds) + len(global_removes)
+        print(f"  global:   {global_path}  ({g_count} overrides)")
+    else:
+        print(f"  global:   {global_path}  (not found)")
+    if project_dir and os.path.exists(project_path):
+        p_count = len(project_adds) + len(project_removes)
+        print(f"  project:  {project_path}  ({p_count} overrides)")
+    else:
+        print(f"  project:  {project_path}  (not found)")
+
+    # Tools (allow)
+    print()
+    print("== tools (allow) ==")
+    default_allows = [n for n, v in defaults.get("tools", {}).items() if isinstance(v, str) and v == "allow"]
+    base_line = ", ".join(sorted(n for n in allow_tools if n not in global_adds and n not in project_adds))
+    if base_line:
+        print(f"  {base_line}")
+    added = [n for n in allow_tools if n in global_adds or n in project_adds]
+    if added:
+        parts = []
+        for n in sorted(added):
+            tags = source_tag(n)
+            parts.append(f"[{' '.join(tags)}: {n}]")
+        print(f"  {' '.join(parts)}")
+
+    # Tools (ask)
+    print()
+    print("== tools (ask) ==")
+    base_line = ", ".join(sorted(n for n in ask_tools if n not in global_adds and n not in project_adds))
+    if base_line:
+        print(f"  {base_line}")
+    added = [n for n in ask_tools if n in global_adds or n in project_adds]
+    if added:
+        parts = []
+        for n in sorted(added):
+            tags = source_tag(n)
+            parts.append(f"[{' '.join(tags)}: {n}]")
+        print(f"  {' '.join(parts)}")
+
+    # Removed tools
+    all_removes = global_removes | project_removes
+    if all_removes:
+        parts = []
+        for n in sorted(all_removes):
+            if n in project_removes:
+                parts.append(f"[-project: {n}]")
+            else:
+                parts.append(f"[-global: {n}]")
+        print(f"  {' '.join(parts)}")
+
+    # Tools (rules)
+    print()
+    print("== tools (rules) ==")
+    for name, entry in rule_tools:
+        ask_list = entry.get("ask", [])
+        flags = entry.get("dangerous_flags", [])
+        default = entry.get("default", "ask")
+        parts = [f"  {name}:"]
+        if ask_list:
+            parts.append(f"ask=[{', '.join(ask_list)}]")
+        if flags:
+            parts.append(f"flags=[{', '.join(flags)}]")
+        parts.append(f"default={default}")
+        src = ""
+        if name in project_adds:
+            src = "  [+project]"
+        elif name in global_adds:
+            src = "  [+global]"
+        print(f"{'  '.join(parts)}{src}")
+
+    # pipe_deny_right
+    print()
+    print("== pipe_deny_right ==")
+    default_pipes = set(defaults.get("pipe_deny_right", []))
+    effective_pipes = set(effective.get("pipe_deny_right", []))
+    base_pipes = sorted(effective_pipes & default_pipes)
+    if base_pipes:
+        print(f"  {', '.join(base_pipes)}")
+    added_pipes = sorted(effective_pipes - default_pipes)
+    if added_pipes:
+        parts = []
+        for p in added_pipes:
+            if p in project_cfg.get("pipe_deny_right_add", []):
+                parts.append(f"[+project: {p}]")
+            else:
+                parts.append(f"[+global: {p}]")
+        print(f"  {' '.join(parts)}")
+
+    # Other
+    print()
+    print("== other ==")
+    dirs = effective.get("allowed_dirs_extra", [])
+    if dirs:
+        print(f"  allowed_dirs_extra: {', '.join(dirs)}")
+    else:
+        print("  allowed_dirs_extra: (none)")
+
+    audit = get_audit_log_path()
+    if audit:
+        print(f"  audit_log: {audit}")
+    else:
+        print("  audit_log: (none)")
+
+
+if __name__ == "__main__":
+    main()

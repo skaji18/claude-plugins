@@ -17,6 +17,10 @@ from typing import List, Tuple
 
 import yaml
 
+# Import shared config module
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from pg_config import load_config  # noqa: E402
+
 
 class RejectException(Exception):
     def __init__(self, reason):
@@ -56,81 +60,9 @@ def reject(reason="unknown"):
     raise RejectException(reason)
 
 
-# --- Configuration: defaults + user merge ---
+# --- Configuration ---
 
 NEVER_SAFE = {"sudo", "su"}
-
-
-def load_defaults():
-    """Load plugin defaults.yaml."""
-    plugin_root = os.environ.get("CLAUDE_PLUGIN_ROOT", "")
-    if not plugin_root:
-        # Fallback: derive plugin root from this script's location
-        # Script is at {plugin_root}/scripts/permission-fallback
-        plugin_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    defaults_path = os.path.join(plugin_root, "config", "defaults.yaml")
-    if os.path.exists(defaults_path):
-        with open(defaults_path) as f:
-            return yaml.safe_load(f) or {}
-    return {}
-
-
-def load_user_config():
-    """Load user config from $CLAUDE_PROJECT_DIR/.claude/permission-guard.yaml"""
-    project_dir = os.environ.get("CLAUDE_PROJECT_DIR", "")
-    if not project_dir:
-        return {}
-    user_config_path = os.path.join(project_dir, ".claude", "permission-guard.yaml")
-    if os.path.exists(user_config_path):
-        with open(user_config_path) as f:
-            return yaml.safe_load(f) or {}
-    return {}
-
-
-def merge_config(defaults, user_config):
-    """Merge defaults + user additions - user removals."""
-    effective_tools = dict(defaults.get("tools", {}))
-
-    # tools_add
-    for name, val in user_config.get("tools_add", {}).items():
-        if isinstance(val, str):
-            effective_tools[name] = val
-        else:
-            existing = effective_tools.get(name, {})
-            if isinstance(existing, str):
-                existing = {"default": existing}
-            for k, v in val.items():
-                if k in ("ask", "dangerous_flags") and k in existing:
-                    existing[k] = list(set(existing[k]) | set(v))
-                else:
-                    existing[k] = v
-            effective_tools[name] = existing
-
-    # tools_remove
-    for name in user_config.get("tools_remove", []):
-        effective_tools.pop(name, None)
-
-    # pipe_deny_right
-    effective_pipe = list(set(
-        defaults.get("pipe_deny_right", [])
-        + user_config.get("pipe_deny_right_add", [])
-    ))
-
-    return {
-        "tools": effective_tools,
-        "pipe_deny_right": effective_pipe,
-        "allowed_dirs_extra": user_config.get("allowed_dirs_extra",
-                               defaults.get("allowed_dirs_extra", [])),
-        "audit_log_path": user_config.get("audit_log_path",
-                           defaults.get("audit_log_path", "")),
-    }
-
-
-def load_config():
-    """Load effective config (defaults merged with user config)."""
-    defaults = load_defaults()
-    user_config = load_user_config()
-    return merge_config(defaults, user_config)
 
 
 def canonicalize_path(path):
@@ -574,14 +506,8 @@ def validate_compound_command(command: str, config) -> Tuple[str, str]:
 
 def _get_audit_log_path():
     """Get audit log path from config or default."""
-    config = load_config()
-    audit_path = config.get("audit_log_path", "")
-    if audit_path:
-        return os.path.expanduser(audit_path)
-    plugin_root = os.environ.get("CLAUDE_PLUGIN_ROOT", "")
-    if plugin_root:
-        return os.path.join(plugin_root, "logs", "decisions.jsonl")
-    return None
+    from pg_config import get_audit_log_path
+    return get_audit_log_path()
 
 
 def _write_audit_log(decision, reason):

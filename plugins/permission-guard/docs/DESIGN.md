@@ -227,28 +227,47 @@ git:
 
 デフォルト設定のマップエントリ: `git`（default: allow）、`docker`（default: ask）、`gh`（default: ask）、`npm`（default: ask）。
 
-### 2層コンフィグマージ
+### 3層コンフィグマージ
 
-設定は2層でロードされる:
+設定は3層でロードされ、チェーンマージされる:
 
 1. **defaults.yaml**: `{CLAUDE_PLUGIN_ROOT}/config/defaults.yaml`（プラグイン同梱のベースライン）
-2. **ユーザー設定**: `{CLAUDE_PROJECT_DIR}/.claude/permission-guard.yaml`（プロジェクト固有のカスタマイズ）
+2. **グローバル設定**: `~/.claude/permission-guard.yaml`（全プロジェクト共通のカスタマイズ）
+3. **プロジェクト設定**: `{CLAUDE_PROJECT_DIR}/.claude/permission-guard.yaml`（プロジェクト固有のカスタマイズ）
 
-マージは `merge_config(defaults, user_config)` で行われる:
+マージは `merge_config(base, delta)` を2回チェーンして行われる:
+
+```
+effective = merge_config(merge_config(defaults, global), project)
+```
+
+各層のデルタは同じキー構造を持つ:
 
 | キー | マージ方式 |
 |---|---|
-| `tools` | defaults をベースに、`tools_add` で追加/上書き、`tools_remove` で削除 |
-| `pipe_deny_right` | defaults + `pipe_deny_right_add` の和集合 |
-| `allowed_dirs_extra` | ユーザー設定があれば上書き、なければ defaults |
-| `audit_log_path` | ユーザー設定があれば上書き、なければ defaults |
+| `tools` | base をベースに、`tools_add` で追加/上書き、`tools_remove` で削除 |
+| `pipe_deny_right` | base + `pipe_deny_right_add` の和集合 |
+| `allowed_dirs_extra` | delta に値があれば上書き、なければ base |
+| `audit_log_path` | delta に値があれば上書き、なければ base |
 
 `tools_add` でマップエントリを追加する場合:
 - 既存エントリが文字列なら `{"default": 既存値}` に変換してからマージ
 - `ask` と `dangerous_flags` は和集合（既存リスト + 新規リスト）
 - その他のキーは上書き
+- `tools_add` がリスト形式（`- name: val`）の場合も dict に変換して処理（ロバスト対応）
 
-この設計により、ユーザーは defaults のセキュリティベースラインを維持しつつ、プロジェクト固有のコマンドを追加できる。`tools_remove` でベースラインのコマンドを削除することもできるが、`NEVER_SAFE` はハードコードのため設定で回避できない。
+優先順位は **project > global > defaults** であり、後段の設定が前段を上書きする。具体例:
+
+| シナリオ | global | project | effective |
+|---------|--------|---------|-----------|
+| global で追加、project で上書き | `bun: "ask"` | `bun: "allow"` | `bun: "allow"` |
+| global で削除、project で復活 | `tools_remove: [ls]` | `tools_add: {ls: "allow"}` | `ls: "allow"` |
+| global で追加、project は触らない | `bun: "allow"` | — | `bun: "allow"` |
+| map entry の部分マージ | `bun: {ask: [publish]}` | `bun: {dangerous_flags: [--force]}` | `bun: {ask: [publish], dangerous_flags: [--force]}` |
+
+この設計により、ユーザーは全プロジェクト共通の設定をグローバルに持ちつつ、プロジェクト固有のカスタマイズを上書きできる。`NEVER_SAFE` はハードコードのため設定で回避できない。
+
+コンフィグ関連の関数は `scripts/pg_config.py` に共有モジュールとして抽出されており、`permission-fallback`（hook）および各スクリプト（`show-config`, `analyze-log`, `apply-config`）が共通で使用する。
 
 ## 6. プロジェクト内コマンド自動許可
 

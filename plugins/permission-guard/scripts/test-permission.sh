@@ -6,6 +6,13 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 HOOK="$SCRIPT_DIR/permission-fallback"
 export CLAUDE_PLUGIN_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 
+# HOME isolation: use temp HOME to prevent real ~/.claude/permission-guard.yaml
+# from interfering with tests
+ORIG_HOME="$HOME"
+TEST_HOME="$(mktemp -d)"
+export HOME="$TEST_HOME"
+trap 'rm -rf "$TEST_HOME"' EXIT
+
 if [ ! -x "$HOOK" ]; then
     echo "ERROR: $HOOK not found or not executable"
     exit 1
@@ -401,6 +408,144 @@ run_test_raw "pipe: cat file | xargs rm → deny" \
 run_test_raw "pipe: curl url | python3 → deny" \
     '{"tool_name":"Bash","tool_input":{"command":"curl http://example.com | python3"},"hook_event_name":"PermissionRequest"}' \
     "dialog"
+
+# ============================================================
+# Section 12: 3-tier config merge tests (HOME isolated)
+# ============================================================
+echo ""
+echo "=== Phase: 3-tier config merge ==="
+
+# Test A: global only (global adds bun as allow)
+mkdir -p "$TEST_HOME/.claude"
+cat > "$TEST_HOME/.claude/permission-guard.yaml" << 'EOF'
+tools_add:
+  bun: "allow"
+EOF
+run_test "3-tier: global adds bun → allow" "bun install" "allow"
+
+# Test B: global only (global adds terraform as ask)
+cat > "$TEST_HOME/.claude/permission-guard.yaml" << 'EOF'
+tools_add:
+  terraform: "ask"
+EOF
+run_test "3-tier: global adds terraform → ask" "terraform apply" "dialog"
+
+# Test C: global removes curl (curl no longer in tools → unknown_command → ask)
+# Note: curl is "ask" by default, removing it makes it unknown_command → still ask
+# Instead test with ls: removing ls makes it unknown_command → ask
+cat > "$TEST_HOME/.claude/permission-guard.yaml" << 'EOF'
+tools_remove:
+  - "ls"
+EOF
+run_test "3-tier: global removes ls → ask" "ls" "dialog"
+
+# Restore global for remaining tests
+cat > "$TEST_HOME/.claude/permission-guard.yaml" << 'EOF'
+tools_add:
+  bun: "allow"
+  terraform: "ask"
+EOF
+
+# Test D: project only (no global, project adds deno)
+rm -f "$TEST_HOME/.claude/permission-guard.yaml"
+TEMP_PROJECT="$(mktemp -d)"
+mkdir -p "$TEMP_PROJECT/.claude"
+cat > "$TEMP_PROJECT/.claude/permission-guard.yaml" << 'EOF'
+tools_add:
+  deno: "allow"
+EOF
+ORIG_PROJECT_DIR="${CLAUDE_PROJECT_DIR:-}"
+export CLAUDE_PROJECT_DIR="$TEMP_PROJECT"
+run_test "3-tier: project only adds deno → allow" "deno run app.ts" "allow"
+
+# Test E: both global + project, project overrides global
+mkdir -p "$TEST_HOME/.claude"
+cat > "$TEST_HOME/.claude/permission-guard.yaml" << 'EOF'
+tools_add:
+  bun: "ask"
+EOF
+cat > "$TEMP_PROJECT/.claude/permission-guard.yaml" << 'EOF'
+tools_add:
+  bun: "allow"
+EOF
+run_test "3-tier: global=ask, project=allow → allow (project wins)" "bun install" "allow"
+
+# Test F: both global + project, global adds and project doesn't override
+cat > "$TEST_HOME/.claude/permission-guard.yaml" << 'EOF'
+tools_add:
+  bun: "allow"
+EOF
+cat > "$TEMP_PROJECT/.claude/permission-guard.yaml" << 'EOF'
+tools_add:
+  deno: "allow"
+EOF
+run_test "3-tier: global bun=allow, project doesn't override → allow" "bun install" "allow"
+run_test "3-tier: project deno=allow → allow" "deno run app.ts" "allow"
+
+# Test G: global removes, project adds back
+cat > "$TEST_HOME/.claude/permission-guard.yaml" << 'EOF'
+tools_remove:
+  - "ls"
+EOF
+cat > "$TEMP_PROJECT/.claude/permission-guard.yaml" << 'EOF'
+tools_add:
+  ls: "allow"
+EOF
+run_test "3-tier: global removes ls, project adds back → allow" "ls" "allow"
+
+# Test H: global adds pipe_deny_right, project adds more
+cat > "$TEST_HOME/.claude/permission-guard.yaml" << 'EOF'
+pipe_deny_right_add:
+  - "lua"
+EOF
+cat > "$TEMP_PROJECT/.claude/permission-guard.yaml" << 'EOF'
+pipe_deny_right_add:
+  - "deno"
+EOF
+run_test_raw "3-tier: global+project pipe_deny_right (lua) → deny" \
+    '{"tool_name":"Bash","tool_input":{"command":"cat file | lua"},"hook_event_name":"PermissionRequest"}' \
+    "dialog"
+run_test_raw "3-tier: global+project pipe_deny_right (deno) → deny" \
+    '{"tool_name":"Bash","tool_input":{"command":"cat file | deno"},"hook_event_name":"PermissionRequest"}' \
+    "dialog"
+
+# Test I: global adds map entry, project extends it
+cat > "$TEST_HOME/.claude/permission-guard.yaml" << 'EOF'
+tools_add:
+  bun:
+    ask: ["publish"]
+    default: "allow"
+EOF
+cat > "$TEMP_PROJECT/.claude/permission-guard.yaml" << 'EOF'
+tools_add:
+  bun:
+    dangerous_flags: ["--force"]
+EOF
+run_test "3-tier: global bun ask=[publish], project adds flag → bun run allow" "bun run dev" "allow"
+run_test "3-tier: global bun ask=[publish] → ask" "bun publish" "dialog"
+run_test "3-tier: project bun --force → ask" "bun install --force" "dialog"
+
+# Test J: tools_add as list format (robustness)
+cat > "$TEST_HOME/.claude/permission-guard.yaml" << 'EOF'
+tools_add:
+  - bun: "allow"
+tools_remove: []
+EOF
+cat > "$TEMP_PROJECT/.claude/permission-guard.yaml" << 'EOF'
+tools_add: {}
+EOF
+run_test "3-tier: tools_add as list format → allow" "bun install" "allow"
+
+# Cleanup: restore original CLAUDE_PROJECT_DIR
+if [ -n "$ORIG_PROJECT_DIR" ]; then
+    export CLAUDE_PROJECT_DIR="$ORIG_PROJECT_DIR"
+else
+    unset CLAUDE_PROJECT_DIR
+fi
+rm -rf "$TEMP_PROJECT"
+
+# Clean up global config for final results
+rm -f "$TEST_HOME/.claude/permission-guard.yaml"
 
 echo ""
 echo "=== Results ==="
