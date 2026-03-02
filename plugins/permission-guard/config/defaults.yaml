@@ -1,5 +1,8 @@
 tools:
   # 単純エントリ (allow)
+  cd: "allow"
+  mkdir: "allow"
+  touch: "allow"
   ls: "allow"
   cat: "allow"
   head: "allow"
@@ -37,6 +40,18 @@ tools:
   go: "allow"
   rustc: "allow"
   diff: "allow"
+  tr: "allow"
+  tac: "allow"
+  rev: "allow"
+  test: "allow"
+  true: "allow"
+  false: "allow"
+  readlink: "allow"
+  shasum: "allow"
+  printenv: "allow"
+  seq: "allow"
+  comm: "allow"
+  paste: "allow"
 
   # 単純エントリ (ask)
   curl: "ask"
