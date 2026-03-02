@@ -240,7 +240,8 @@ def phase_2_shell_syntax(command):
         reject("P1:backtick_substitution")
 
     # Guard P1b: Bare & (background execution) — && is handled by compound validation
-    if re.search(r'(?<!&)&(?!&)', command):
+    # Also exclude >&N (fd dup, e.g. 2>&1) and &> (bash stdout+stderr redirect)
+    if re.search(r'(?<!&)(?<!>)&(?!&)(?!>)', command):
         reject("P1:background_execution")
 
     # Strip quoted content for expansion checks (P3/P4/P7).
@@ -599,6 +600,8 @@ def main():
     try:
         phase_s0_null_byte_check(input_str, command)
         phase_1_sanitize(input_data, command)
+        # Strip bash line continuations (backslash + newline → join lines)
+        command = command.replace('\\\n', '')
         command = phase_1_5_strip_safe_suffixes(command)
         phase_2_shell_syntax(command)
     except RejectException as e:

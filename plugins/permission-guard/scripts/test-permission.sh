@@ -400,6 +400,22 @@ run_test_raw "redirect: echo hello > /dev/null → allow" \
     '{"tool_name":"Bash","tool_input":{"command":"echo hello > /dev/null"},"hook_event_name":"PermissionRequest"}' \
     "allow"
 
+# 2>&1 in compound command (not background execution)
+run_test_raw "redirect: cmd 2>&1 | grep → allow" \
+    '{"tool_name":"Bash","tool_input":{"command":"git status 2>&1 | grep main"},"hook_event_name":"PermissionRequest"}' \
+    "allow"
+
+# bare & is still background execution → reject
+run_test "background: cmd & → dialog" "ls &" "dialog"
+
+# backslash line continuation in compound commands
+run_test_raw "continuation: git add && backslash-nl git commit → allow" \
+    '{"tool_name":"Bash","tool_input":{"command":"git add file.txt && \\\ngit commit -m fix"},"hook_event_name":"PermissionRequest"}' \
+    "allow"
+run_test_raw "continuation: single cmd with backslash-nl → allow" \
+    '{"tool_name":"Bash","tool_input":{"command":"git log \\\n  --oneline"},"hook_event_name":"PermissionRequest"}' \
+    "allow"
+
 # パイプ右辺: xargs → deny (pipe_deny_right)
 run_test_raw "pipe: cat file | xargs rm → deny" \
     '{"tool_name":"Bash","tool_input":{"command":"cat scripts/test.sh | xargs rm"},"hook_event_name":"PermissionRequest"}' \
