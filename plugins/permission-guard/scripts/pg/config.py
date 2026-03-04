@@ -1,5 +1,5 @@
 """
-pg_config.py -- 3-layer configuration loader for permission-guard
+pg.config -- 3-layer configuration loader for permission-guard
 
 Layer order (later overrides earlier):
   1. defaults: config/defaults.yaml (plugin built-in)
@@ -19,7 +19,8 @@ def load_defaults():
     """Load plugin defaults.yaml."""
     plugin_root = os.environ.get("CLAUDE_PLUGIN_ROOT", "")
     if not plugin_root:
-        plugin_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        # pg/ package is at scripts/pg/, so plugin root is two levels up
+        plugin_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
     defaults_path = os.path.join(plugin_root, "config", "defaults.yaml")
     if os.path.exists(defaults_path):
         with open(defaults_path) as f:
@@ -125,12 +126,26 @@ def load_config():
 
 
 def get_audit_log_path():
-    """Get audit log path from effective config, with fallback to plugin logs dir."""
+    """Get effective audit log path (write target) from merged config."""
     config = load_config()
     audit_path = config.get("audit_log_path", "")
     if audit_path:
         return os.path.expanduser(audit_path)
-    plugin_root = os.environ.get("CLAUDE_PLUGIN_ROOT", "")
-    if plugin_root:
-        return os.path.join(plugin_root, "logs", "decisions.jsonl")
     return None
+
+
+def get_all_audit_log_paths():
+    """Get all unique audit log paths across config layers (for reading/analysis).
+
+    Returns paths from defaults, global, and project configs.
+    Useful when the user changed paths over time and old logs remain at previous locations.
+    """
+    paths = []
+    for loader in (load_defaults, load_global_config, load_project_config):
+        cfg = loader()
+        p = cfg.get("audit_log_path", "")
+        if p:
+            expanded = os.path.expanduser(p)
+            if expanded not in paths:
+                paths.append(expanded)
+    return paths

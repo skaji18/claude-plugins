@@ -108,4 +108,4 @@ pipe_deny_right:
   - "xargs"
 
 allowed_dirs_extra: []
-audit_log_path: ""
+audit_log_path: "~/.claude/permission-guard-audit.jsonl"

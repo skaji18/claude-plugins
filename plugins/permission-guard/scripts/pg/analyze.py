@@ -1,33 +1,27 @@
-#!/usr/bin/env python3
-"""analyze-log — Parse permission-guard audit log and identify optimization candidates."""
+"""pg.analyze -- Parse permission-guard audit log and identify optimization candidates."""
 
 import json
 import os
 import sys
 from collections import Counter
 
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from pg_config import get_audit_log_path
+from pg.config import get_all_audit_log_paths
 
 MIN_ENTRIES = 10
 MIN_ASK_COUNT = 5
 
 
-def main():
-    fmt = "text"
-    if "--format=json" in sys.argv:
-        fmt = "json"
+def _collect_log_paths():
+    """Collect all unique audit log paths from defaults/global/project configs."""
+    return get_all_audit_log_paths()
 
-    log_path = get_audit_log_path()
-    if not log_path or not os.path.exists(log_path):
-        if fmt == "json":
-            print(json.dumps({"error": "log_not_found", "path": log_path or ""}))
-        else:
-            print(f"Log file not found: {log_path or '(no path configured)'}")
-        sys.exit(1)
 
+def _read_log(path):
+    """Read JSONL entries from a single log file."""
     entries = []
-    with open(log_path) as f:
+    if not path or not os.path.exists(path):
+        return entries
+    with open(path) as f:
         for line in f:
             line = line.strip()
             if not line:
@@ -36,6 +30,29 @@ def main():
                 entries.append(json.loads(line))
             except json.JSONDecodeError:
                 continue
+    return entries
+
+
+def main():
+    fmt = "text"
+    if "--format=json" in sys.argv:
+        fmt = "json"
+
+    log_paths = _collect_log_paths()
+    entries = []
+    sources = []
+    for p in log_paths:
+        found = _read_log(p)
+        if found:
+            entries.extend(found)
+            sources.append(f"{p} ({len(found)} entries)")
+
+    if not entries:
+        if fmt == "json":
+            print(json.dumps({"error": "log_not_found", "paths": log_paths}))
+        else:
+            print(f"No log files found. Checked: {', '.join(log_paths) or '(no path configured)'}")
+        sys.exit(1)
 
     if len(entries) < MIN_ENTRIES:
         if fmt == "json":
@@ -108,10 +125,15 @@ def main():
         "candidates": candidates,
     }
 
+    if sources:
+        result["sources"] = sources
+
     if fmt == "json":
         print(json.dumps(result, indent=2))
     else:
         print(f"Permission log analysis")
+        for s in sources:
+            print(f"  source: {s}")
         print(f"Period: {result['period']['from']} -> {result['period']['to']}  ({result['total']} decisions)")
         print(f"allow: {allow_count} / ask: {ask_count} / deny: {deny_count}")
         print()

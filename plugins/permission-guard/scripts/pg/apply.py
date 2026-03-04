@@ -1,5 +1,4 @@
-#!/usr/bin/env python3
-"""apply-config — Merge proposed tools_add entries into a permission-guard config file."""
+"""pg.apply -- Merge proposed tools_add entries into a permission-guard config file."""
 
 import argparse
 import json

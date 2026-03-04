@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.2.0] - 2026-03-04
+
+### Changed
+- **scripts/pg/ package** — migrated flat scripts to Python package structure with `python -m pg <subcmd>` dispatch
+- **boot wrapper** uses `PYTHONPATH` + `python -m pg hook` invocation
+- **commands/*.md** updated to use `python -m pg show/analyze/apply`
+- Removed legacy scripts: permission-fallback, pg_config.py, show-config, analyze-log, apply-config
+
 ## [Unreleased]
 
 ### Added

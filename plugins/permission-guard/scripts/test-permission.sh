@@ -3,9 +3,13 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-HOOK="$SCRIPT_DIR/permission-fallback"
 export CLAUDE_PLUGIN_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 export PG_NO_AUDIT=1
+export PYTHONPATH="$SCRIPT_DIR"
+
+# Use python -m pg hook as the hook command
+PYTHON="${CLAUDE_PLUGIN_ROOT}/.venv/bin/python3"
+HOOK_CMD=("$PYTHON" -m pg hook)
 
 # HOME isolation: use temp HOME to prevent real ~/.claude/permission-guard.yaml
 # from interfering with tests
@@ -14,8 +18,8 @@ TEST_HOME="$(mktemp -d)"
 export HOME="$TEST_HOME"
 trap 'rm -rf "$TEST_HOME"' EXIT
 
-if [ ! -x "$HOOK" ]; then
-    echo "ERROR: $HOOK not found or not executable"
+if [ ! -f "$PYTHON" ]; then
+    echo "ERROR: $PYTHON not found. Run setup.sh first."
     exit 1
 fi
 
@@ -27,7 +31,7 @@ run_test() {
     local input
     input=$(printf '{"tool_name":"Bash","tool_input":{"command":"%s"},"hook_event_name":"PermissionRequest"}' "$cmd")
     local output
-    output=$(echo "$input" | CLAUDE_PROJECT_DIR="${CLAUDE_PROJECT_DIR:-$(pwd)}" "$HOOK" 2>/dev/null) || true
+    output=$(echo "$input" | CLAUDE_PROJECT_DIR="${CLAUDE_PROJECT_DIR:-$(pwd)}" "${HOOK_CMD[@]}" 2>/dev/null) || true
 
     if [ "$expect" = "allow" ]; then
         if echo "$output" | grep -q '"allow"'; then
@@ -53,7 +57,7 @@ run_test() {
 run_test_raw() {
     local desc="$1" raw_json="$2" expect="$3"
     local output
-    output=$(printf '%s' "$raw_json" | CLAUDE_PROJECT_DIR="${CLAUDE_PROJECT_DIR:-$(pwd)}" "$HOOK" 2>/dev/null) || true
+    output=$(printf '%s' "$raw_json" | CLAUDE_PROJECT_DIR="${CLAUDE_PROJECT_DIR:-$(pwd)}" "${HOOK_CMD[@]}" 2>/dev/null) || true
 
     if [ "$expect" = "allow" ]; then
         if echo "$output" | grep -q '"allow"'; then

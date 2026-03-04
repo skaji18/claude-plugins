@@ -6,4 +6,4 @@ if [ ! -f "$VENV" ]; then
   echo '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"ask","permissionDecisionReason":"permission-guard: venv not found. Run /permission-guard:setup"}}'
   exit 0
 fi
-exec "$VENV" "${CLAUDE_PLUGIN_ROOT}/scripts/permission-fallback"
+PYTHONPATH="${CLAUDE_PLUGIN_ROOT}/scripts" exec "$VENV" -m pg hook

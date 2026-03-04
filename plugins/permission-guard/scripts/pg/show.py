@@ -1,5 +1,4 @@
-#!/usr/bin/env python3
-"""show-config — Display effective permission-guard config with 3-tier source attribution.
+"""pg.show -- Display effective permission-guard config with 3-tier source attribution.
 
 Source tags:
   [D] = defaults (plugin built-in)
@@ -10,8 +9,7 @@ Source tags:
 import os
 import sys
 
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from pg_config import load_defaults, load_global_config, load_project_config, merge_config, get_audit_log_path
+from pg.config import load_defaults, load_global_config, load_project_config, merge_config, get_audit_log_path
 
 
 def normalize_tools_add(cfg):
@@ -42,7 +40,8 @@ def main():
     # --- Config sources ---
     plugin_root = os.environ.get("CLAUDE_PLUGIN_ROOT", "")
     if not plugin_root:
-        plugin_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        # pg/ package is at scripts/pg/, so plugin root is two levels up
+        plugin_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
     defaults_path = os.path.join(plugin_root, "config", "defaults.yaml")
     home = os.path.expanduser("~")
     global_path = os.path.join(home, ".claude", "permission-guard.yaml")

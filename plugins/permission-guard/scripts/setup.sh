@@ -18,10 +18,7 @@ else
     echo "[skip] .venv already exists"
 fi
 .venv/bin/pip install --quiet pyyaml
-chmod +x "$PLUGIN_ROOT/scripts/permission-fallback"
-chmod +x "$PLUGIN_ROOT/scripts/show-config"
-chmod +x "$PLUGIN_ROOT/scripts/analyze-log"
-chmod +x "$PLUGIN_ROOT/scripts/apply-config"
+chmod +x "$PLUGIN_ROOT/scripts/boot"
 echo ""
 
 # Step 2a: global config
@@ -40,7 +37,9 @@ tools_add: {}
 tools_remove: []
 pipe_deny_right_add: []
 allowed_dirs_extra: []
-audit_log_path: ""
+# Default: ~/.claude/permission-guard-audit.jsonl (from plugin defaults)
+# Uncomment to override:
+# audit_log_path: "~/.claude/permission-guard-audit.jsonl"
 YAML
     echo "[created] $GLOBAL_CONFIG"
 fi
@@ -62,7 +61,7 @@ tools_add: {}
 tools_remove: []
 pipe_deny_right_add: []
 allowed_dirs_extra: []
-audit_log_path: ""
+# audit_log_path: inherited from global/defaults
 YAML
     echo "[created] $PROJECT_CONFIG"
 fi

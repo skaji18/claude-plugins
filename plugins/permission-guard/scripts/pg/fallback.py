@@ -1,8 +1,6 @@
-#!/usr/bin/env python3
 """
-.claude/hooks/permission-fallback
+pg.fallback -- PermissionRequest fallback hook (Python reimplementation)
 
-PermissionRequest fallback hook (Python reimplementation)
 Automatically approves PROJECT_DIR-scoped execution (+ allowed_dirs_extra) with validation.
 Config redesign: tools unified structure + defaults.yaml (cmd_093)
 """
@@ -11,15 +9,12 @@ import sys
 import json
 import re
 import os
-from pathlib import PurePosixPath
 from dataclasses import dataclass
 from typing import List, Tuple
 
 import yaml
 
-# Import shared config module
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from pg_config import load_config  # noqa: E402
+from pg.config import load_config, get_audit_log_path
 
 
 class RejectException(Exception):
@@ -49,7 +44,7 @@ def _detect_project_dir():
 
 PROJECT_DIR = _detect_project_dir()
 DEBUG = os.getenv("PERMISSION_DEBUG", "0") == "1"
-_current_command = ""  # グローバル初期化
+_current_command = ""  # global init
 
 
 def allow(reason="phase_passed"):
@@ -97,7 +92,7 @@ def phase_s0_null_byte_check(input_str, command):
 def phase_1_sanitize(input_data, command):
     """Phase 1: Control chars, tool_name validation, Unicode whitespace."""
     # Guard S1: Control characters (0x00-0x1F, 0x7F)
-    # Allow tab (0x09) and newline (0x0a) — commonly used in multi-line commands
+    # Allow tab (0x09) and newline (0x0a) -- commonly used in multi-line commands
     # and heredocs. Block all other control characters.
     if re.search(r'[\x00-\x08\x0b-\x1f\x7f]', command):
         reject("S1:control_chars")
@@ -116,7 +111,6 @@ def phase_1_sanitize(input_data, command):
 
 def phase_1_5_strip_safe_suffixes(command):
     """Phase 1.5: Strip safe trailing suffixes (2>&1, || true, etc.)."""
-    original_command = command
     safe_suffix = ""
 
     # Regex patterns (unquoted for Python re module)
@@ -239,7 +233,7 @@ def phase_2_shell_syntax(command):
     if '`' in command:
         reject("P1:backtick_substitution")
 
-    # Guard P1b: Bare & (background execution) — && is handled by compound validation
+    # Guard P1b: Bare & (background execution) -- && is handled by compound validation
     # Also exclude >&N (fd dup, e.g. 2>&1) and &> (bash stdout+stderr redirect)
     if re.search(r'(?<!&)(?<!>)&(?!&)(?!>)', command):
         reject("P1:background_execution")
@@ -310,7 +304,7 @@ def phase_5_normalize_path(script_path):
 def phase_6_project_check(abs_path, config):
     """Phase 6: Check PROJECT_DIR containment (+ allowed_dirs_extra).
 
-    Path containment check only (interpreter判定部分は削除済み).
+    Path containment check only.
     Returns True if contained, False otherwise.
     """
     canon_abs = canonicalize_path(abs_path)
@@ -341,22 +335,22 @@ def phase_6_project_check(abs_path, config):
 
 @dataclass
 class Segment:
-    command: str        # 実行コマンド部分
+    command: str        # command part
     seg_type: str       # "cmd", "redirect_out", "redirect_in"
-    redirect_path: str  # リダイレクト先/元パス（seg_type="cmd"の場合は空文字）
+    redirect_path: str  # redirect target/source path (empty for seg_type="cmd")
 
 
 def split_compound(command: str) -> List[Segment]:
-    """複合コマンドをセグメントに分割する。"""
+    """Split compound command into segments."""
     segments = []
 
-    # リダイレクトを先に抽出（> file, >> file, < file）
-    # 2>&1, 2>/dev/null はPhase 1.5で処理済み
+    # Extract redirects first (> file, >> file, < file)
+    # 2>&1, 2>/dev/null are handled by Phase 1.5
     redirect_pattern = re.compile(r'\s(>>?|<)\s(\S+)')
     redirects = redirect_pattern.findall(command)
     cmd_without_redirect = redirect_pattern.sub('', command).strip()
 
-    # パイプ・チェイン分割（||, &&, |, ; を左から右に分割）
+    # Split by pipe/chain (||, &&, |, ; from left to right)
     if re.search(r'\s(?:\|\||&&|[|;])\s', cmd_without_redirect):
         parts = re.split(r'\s*(?:\|\||&&|[|;])\s*', cmd_without_redirect)
         for part in parts:
@@ -366,7 +360,7 @@ def split_compound(command: str) -> List[Segment]:
     else:
         segments.append(Segment(command=cmd_without_redirect, seg_type="cmd", redirect_path=""))
 
-    # リダイレクトセグメントを追加
+    # Add redirect segments
     for op, path in redirects:
         if op in ('>', '>>'):
             segments.append(Segment(command="", seg_type="redirect_out", redirect_path=path))
@@ -377,7 +371,7 @@ def split_compound(command: str) -> List[Segment]:
 
 
 def is_dangerous_pipe(command: str, config) -> bool:
-    """パイプの右辺が危険なターゲットか判定（config参照）。"""
+    """Check if pipe right-hand side is a dangerous target (config-based)."""
     first_word = command.strip().split()[0] if command.strip() else ""
     basename = first_word.split('/')[-1] if '/' in first_word else first_word
     return basename in config.get("pipe_deny_right", [])
@@ -385,7 +379,7 @@ def is_dangerous_pipe(command: str, config) -> bool:
 
 def validate_single_command(command, config):
     """
-    Phase 3-7の統合検証。新tools構造を使用。
+    Phase 3-7 integrated validation. Uses new tools structure.
     Returns: ("allow"|"ask"|"reject", reason)
     """
     if not command.strip():
@@ -394,16 +388,16 @@ def validate_single_command(command, config):
     words = command.strip().split()
     cmd_name = words[0]
 
-    # パス付きコマンド（/usr/bin/git等）のbasename
+    # Basename for path-based commands (/usr/bin/git etc.)
     cmd_basename = os.path.basename(cmd_name)
 
-    # NEVER_SAFE ハードコード
+    # NEVER_SAFE hardcoded
     if cmd_basename in NEVER_SAFE:
         return ("ask", f"never_safe:{cmd_basename}")
 
-    # Project-contained command path → auto-allow
-    # e.g., .venv/bin/pytest, scripts/deploy.sh → allow if within PROJECT_DIR or allowed_dirs_extra
-    # Uses normpath (not realpath) to avoid resolving symlinks — .venv/bin/python is a symlink
+    # Project-contained command path -> auto-allow
+    # e.g., .venv/bin/pytest, scripts/deploy.sh -> allow if within PROJECT_DIR or allowed_dirs_extra
+    # Uses normpath (not realpath) to avoid resolving symlinks -- .venv/bin/python is a symlink
     # but its location is within the project, so it should be allowed.
     if '/' in cmd_name:
         if cmd_name.startswith('/'):
@@ -427,22 +421,22 @@ def validate_single_command(command, config):
         return ("ask", f"unknown_command:{cmd_basename}")
 
     if isinstance(tool_entry, str):
-        # 単純エントリ: "allow" or "ask"
+        # Simple entry: "allow" or "ask"
         return (tool_entry, f"tools:{cmd_basename}")
 
-    # 複雑エントリ（マップ）
-    # 1. dangerous_flags チェック
+    # Complex entry (map)
+    # 1. dangerous_flags check
     dangerous_flags = tool_entry.get("dangerous_flags", [])
     for word in words[1:]:
         if word in dangerous_flags:
             return ("ask", f"dangerous_flag:{cmd_basename}:{word}")
-        # 複合短フラグ分解 (-rf → -r, -f)
+        # Compound short flag decomposition (-rf -> -r, -f)
         if word.startswith("-") and not word.startswith("--") and len(word) > 2:
             for ch in word[1:]:
                 if f"-{ch}" in dangerous_flags:
                     return ("ask", f"dangerous_flag:{cmd_basename}:-{ch}")
 
-    # 2. allow サブコマンド チェック（ask より先に評価）
+    # 2. allow subcommand check (evaluated before ask)
     allow_subs = tool_entry.get("allow", [])
     subcommands = [w for w in words[1:] if not w.startswith("-")]
     for allow_sub in allow_subs:
@@ -456,7 +450,7 @@ def validate_single_command(command, config):
                     and subcommands[1] == allow_parts[1]):
                 return ("allow", f"allow_subcommand:{cmd_basename}:{allow_sub}")
 
-    # 3. ask サブコマンド チェック（スペース区切り DSL）
+    # 3. ask subcommand check (space-delimited DSL)
     ask_subs = tool_entry.get("ask", [])
     for ask_sub in ask_subs:
         ask_parts = ask_sub.split()
@@ -475,10 +469,10 @@ def validate_single_command(command, config):
 
 
 def validate_compound_command(command: str, config) -> Tuple[str, str]:
-    """複合コマンド（パイプ・チェイン・リダイレクト含む）を分割検証。
+    """Validate compound commands (pipe/chain/redirect) by splitting and checking each segment.
     Returns: ("allow", reason) or ("reject"|"ask", reason)
     """
-    # パイプの右辺の危険パターンを先にチェック
+    # Check dangerous pipe right-hand side patterns first
     pipe_parts = re.split(r'\s*\|\s*', command)
     if len(pipe_parts) > 1:
         for part in pipe_parts[1:]:
@@ -509,7 +503,7 @@ def validate_compound_command(command: str, config) -> Tuple[str, str]:
     if not results:
         return ("reject", "no_segments")
 
-    # 1つでもreject/ask → 最初のものを返す
+    # Any reject/ask -> return the first one
     non_allows = [(d, r) for d, r in results if d != "allow"]
     if non_allows:
         return non_allows[0]
@@ -520,7 +514,6 @@ def validate_compound_command(command: str, config) -> Tuple[str, str]:
 
 def _get_audit_log_path():
     """Get audit log path from config or default."""
-    from pg_config import get_audit_log_path
     return get_audit_log_path()
 
 
@@ -609,11 +602,11 @@ def main():
     command = input_data.get("tool_input", {}).get("command", "")
     _current_command = command
 
-    # Pre-validation (Phase S0, 1, 1.5, 2) — 複合コマンド分割前
+    # Pre-validation (Phase S0, 1, 1.5, 2) -- before compound command splitting
     try:
         phase_s0_null_byte_check(input_str, command)
         phase_1_sanitize(input_data, command)
-        # Strip bash line continuations (backslash + newline → join lines)
+        # Strip bash line continuations (backslash + newline -> join lines)
         command = command.replace('\\\n', '')
         command = phase_1_5_strip_safe_suffixes(command)
         phase_2_shell_syntax(command)
@@ -621,9 +614,9 @@ def main():
         output_deny(e.reason)
         return
 
-    # 複合コマンド検出（Phase 2通過後）
-    # |, ;, ||, && は空白なしでも複合コマンドとして扱う（セキュリティ強化）
-    # リダイレクト >, <, >> は空白あり時のみ（パス文字との混同を避ける）
+    # Compound command detection (after Phase 2)
+    # |, ;, ||, && are treated as compound even without spaces (security hardening)
+    # Redirects >, <, >> only with spaces (to avoid confusion with path characters)
     is_compound = bool(re.search(r'(\|\||&&|[|;])|[ \t](>>?|<)[ \t]', command))
 
     # Phase 3-7
@@ -635,7 +628,7 @@ def main():
     if decision == "allow":
         output_allow(reason)
     else:
-        # reasonで deny vs ask を分岐
+        # Branch deny vs ask based on reason
         deny_reasons = {"null_byte", "json_error", "empty_command", "control_char",
                         "unicode_whitespace", "unknown_tool", "no_segments"}
         if reason.startswith("dangerous_pipe_target:") or reason in deny_reasons:
