@@ -442,9 +442,22 @@ def validate_single_command(command, config):
                 if f"-{ch}" in dangerous_flags:
                     return ("ask", f"dangerous_flag:{cmd_basename}:-{ch}")
 
-    # 2. ask サブコマンド チェック（スペース区切り DSL）
-    ask_subs = tool_entry.get("ask", [])
+    # 2. allow サブコマンド チェック（ask より先に評価）
+    allow_subs = tool_entry.get("allow", [])
     subcommands = [w for w in words[1:] if not w.startswith("-")]
+    for allow_sub in allow_subs:
+        allow_parts = allow_sub.split()
+        if len(allow_parts) == 1:
+            if subcommands and subcommands[0] == allow_parts[0]:
+                return ("allow", f"allow_subcommand:{cmd_basename}:{allow_sub}")
+        elif len(allow_parts) == 2:
+            if (len(subcommands) >= 2
+                    and subcommands[0] == allow_parts[0]
+                    and subcommands[1] == allow_parts[1]):
+                return ("allow", f"allow_subcommand:{cmd_basename}:{allow_sub}")
+
+    # 3. ask サブコマンド チェック（スペース区切り DSL）
+    ask_subs = tool_entry.get("ask", [])
     for ask_sub in ask_subs:
         ask_parts = ask_sub.split()
         if len(ask_parts) == 1:
@@ -456,7 +469,7 @@ def validate_single_command(command, config):
                     and subcommands[1] == ask_parts[1]):
                 return ("ask", f"ask_subcommand:{cmd_basename}:{ask_sub}")
 
-    # 3. default
+    # 4. default
     default_action = tool_entry.get("default", "ask")
     return (default_action, f"tools_default:{cmd_basename}")
 

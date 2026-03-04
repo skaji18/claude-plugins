@@ -1,6 +1,6 @@
 {
   "name": "permission-guard",
-  "version": "1.0.1",
+  "version": "1.1.0",
   "description": "8-phase Bash command validation hook for Claude Code. Auto-approves safe commands in scripts/ and .claude/hooks/. Blocks shell injection, path traversal, and dangerous patterns.",
   "author": {
     "name": "skaji18",

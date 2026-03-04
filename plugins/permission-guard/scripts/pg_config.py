@@ -83,7 +83,7 @@ def merge_config(base, delta):
             if isinstance(existing, str):
                 existing = dict(default=existing)
             for k, v in val.items():
-                if k in ("ask", "dangerous_flags") and k in existing:
+                if k in ("ask", "dangerous_flags", "allow") and k in existing:
                     existing[k] = list(set(existing[k]) | set(v))
                 else:
                     existing[k] = v
