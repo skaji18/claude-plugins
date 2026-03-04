@@ -7,7 +7,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": ".venv/bin/python3 ${CLAUDE_PLUGIN_ROOT}/scripts/permission-fallback",
+            "command": "bash ${CLAUDE_PLUGIN_ROOT}/scripts/boot",
             "timeout": 5
           }
         ]
