@@ -64,7 +64,9 @@ tools:
   rmdir: "ask"
   mv: "ask"
   cp: "ask"
-  find: "ask"
+  find:
+    dangerous_flags: ["-exec", "-execdir", "-ok", "-okdir", "-delete", "-fprint", "-fls", "-fprintf"]
+    default: "allow"
   chmod: "ask"
   chown: "ask"
   pip: "ask"

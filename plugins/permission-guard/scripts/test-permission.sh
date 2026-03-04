@@ -141,8 +141,10 @@ run_test "F-004: tcsh triggers ask" "tcsh scripts/test.sh" "dialog"
 # F-010: command → ask (unknown_command)
 run_test "F-010: command builtin triggers ask" "command ls" "dialog"
 
-# NEW-6: find, chmod, chown → ask (tools: "ask")
-run_test "NEW-6: find triggers ask" "find ." "dialog"
+# NEW-6: find (map entry), chmod, chown → ask (tools: "ask")
+run_test "NEW-6: find (no flags) → allow" "find ." "allow"
+run_test "NEW-6: find -exec → ask (dangerous_flags)" "find . -exec rm {} ;" "dialog"
+run_test "NEW-6: find -delete → ask (dangerous_flags)" "find . -name foo -delete" "dialog"
 run_test "NEW-6: chmod triggers ask" "chmod 755 scripts/test.sh" "dialog"
 run_test "NEW-6: chown triggers ask" "chown user scripts/test.sh" "dialog"
 
