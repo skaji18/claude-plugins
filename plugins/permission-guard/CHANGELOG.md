@@ -1,5 +1,19 @@
 # Changelog
 
+## [1.3.0] - 2026-03-07
+
+### Changed
+- **bashlex AST parsing** — replaced regex-based shell syntax analysis (Phase 2, split_compound, _strip_quoted_content) with proper AST parsing via bashlex. Dangerous constructs (command substitution, variable expansion, tilde, env assignment, background execution) are now detected by AST node type instead of regex heuristics.
+- **Subshell handling** — `(cmd)` subshells are now decomposed and validated per-command instead of being opaque. Previously undetected by the regex parser.
+- **Phase 1.5 removed** — safe suffix stripping (|| true, 2>&1, etc.) is no longer needed since bashlex handles these as proper AST nodes.
+- **P8/P8.5 guards removed** — no-space interpreter and quoted command name checks are unnecessary with proper tokenization.
+- **Test suite rewritten in Python** — E2E tests now use subprocess to invoke the hook, eliminating macOS bash version issues and permission-guard self-blocking. 144 test cases.
+- **bashlex** added as dependency (installed by setup.sh)
+
+### Added
+- **pg/parser.py** — new module for bashlex-based command parsing with ParseResult data structure
+- **bashlex_parse_failure** — new fallback: if bashlex cannot parse the command, decision is "ask" (safe default)
+
 ## [1.2.0] - 2026-03-04
 
 ### Changed

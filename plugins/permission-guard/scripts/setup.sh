@@ -17,7 +17,7 @@ if [ ! -d .venv ]; then
 else
     echo "[skip] .venv already exists"
 fi
-.venv/bin/pip install --quiet pyyaml
+.venv/bin/pip install --quiet pyyaml bashlex
 chmod +x "$PLUGIN_ROOT/scripts/boot"
 echo ""
 
@@ -69,4 +69,4 @@ echo ""
 
 # Step 3: tests
 echo "--- Step 3: running tests ---"
-bash "$PLUGIN_ROOT/scripts/test-permission.sh"
+PYTHONPATH="$PLUGIN_ROOT/scripts" "$PLUGIN_ROOT/.venv/bin/python3" "$PLUGIN_ROOT/scripts/test_e2e.py"

@@ -2,19 +2,17 @@
 pg.fallback -- PermissionRequest fallback hook (Python reimplementation)
 
 Automatically approves PROJECT_DIR-scoped execution (+ allowed_dirs_extra) with validation.
-Config redesign: tools unified structure + defaults.yaml (cmd_093)
+Uses bashlex for proper shell AST parsing instead of regex-based heuristics.
 """
 
 import sys
 import json
 import re
 import os
-from dataclasses import dataclass
-from typing import List, Tuple
-
-import yaml
+from typing import Tuple
 
 from pg.config import load_config, get_audit_log_path
+from pg.parser import parse_command, ParseResult
 
 
 class RejectException(Exception):
@@ -22,33 +20,22 @@ class RejectException(Exception):
         self.reason = reason
 
 
-class AllowException(Exception):
-    def __init__(self, reason="phase_passed"):
-        self.reason = reason
-
 # --- Configuration ---
 def _detect_project_dir():
     """Detect project directory. Works in both Plugin and inline modes."""
-    # Priority 1: CLAUDE_PROJECT_DIR (Claude Code always sets this for hooks)
     env_dir = os.environ.get("CLAUDE_PROJECT_DIR")
     if env_dir:
         return os.path.abspath(env_dir)
 
-    # Priority 2: __file__ relative (inline mode: .claude/hooks/permission-fallback)
     file_based = os.path.abspath(os.path.join(os.path.dirname(__file__), "../.."))
     if os.path.isdir(os.path.join(file_based, ".claude")):
         return file_based
 
-    # Priority 3: cwd
     return os.path.abspath(os.getcwd())
 
 PROJECT_DIR = _detect_project_dir()
 DEBUG = os.getenv("PERMISSION_DEBUG", "0") == "1"
 _current_command = ""  # global init
-
-
-def allow(reason="phase_passed"):
-    raise AllowException(reason)
 
 
 def reject(reason="unknown"):
@@ -61,221 +48,32 @@ NEVER_SAFE = {"sudo", "su"}
 
 
 def canonicalize_path(path):
-    """
-    Portable path normalization with symlink resolution (F-006).
-    Uses os.path.realpath to resolve symlinks and .. components.
-    realpath() internally calls normpath(), so both symlinks and
-    lexical components (.., ., //) are handled.
-    """
-    # Resolve symlinks and normalize (handles . and .., duplicate /)
+    """Portable path normalization with symlink resolution."""
     resolved = os.path.realpath(path)
-
-    # Ensure the result is in POSIX format (forward slashes)
     return resolved.replace(os.sep, '/')
 
 
 def phase_s0_null_byte_check(input_str, command):
     """Phase S0: Reject null bytes and empty commands."""
-    # Check for literal null bytes (0x00)
     if '\x00' in input_str:
         reject("S0:null_byte")
-
-    # Check for JSON-encoded null (\u0000)
     if '\\u0000' in input_str:
         reject("S0:json_null")
-
-    # Empty command check
     if not command:
         reject("S0:empty_command")
 
 
 def phase_1_sanitize(input_data, command):
     """Phase 1: Control chars, tool_name validation, Unicode whitespace."""
-    # Guard S1: Control characters (0x00-0x1F, 0x7F)
-    # Allow tab (0x09) and newline (0x0a) -- commonly used in multi-line commands
-    # and heredocs. Block all other control characters.
     if re.search(r'[\x00-\x08\x0b-\x1f\x7f]', command):
         reject("S1:control_chars")
 
-    # Guard S1.5 (F-016): Reject Unicode whitespace characters
-    # Python str.split() splits on Unicode whitespace that bash does not recognize,
-    # creating parse discrepancies where the hook sees different tokens than bash.
     if re.search(r'[\u0085\u00a0\u2000-\u200b\u2028\u2029\u202f\u205f\u3000\ufeff]', command):
         reject("S1:unicode_whitespace")
 
-    # Guard S2: tool_name must be "Bash"
     tool_name = input_data.get("tool_name", "")
     if tool_name != "Bash":
         reject("S2:tool_name")
-
-
-def phase_1_5_strip_safe_suffixes(command):
-    """Phase 1.5: Strip safe trailing suffixes (2>&1, || true, etc.)."""
-    safe_suffix = ""
-
-    # Regex patterns (unquoted for Python re module)
-    re_or_true = re.compile(r'^(.+) \|\| true$')
-    re_2_redir1 = re.compile(r'^(.+) 2>&1$')
-    re_2_redir_null = re.compile(r'^(.+) 2>/dev/null$')
-
-    # Safe content inside double quotes: no $, backtick, (), backslash
-    safe_dq = r'[^$`()\\"]*'
-    re_or_echo_dq = re.compile(r'^(.+) \|\| echo "(' + safe_dq + r')"$')
-    re_and_echo_dq = re.compile(r'^(.+) && echo "(' + safe_dq + r')"$')
-
-    # Single-quoted: reject only single quotes
-    re_or_echo_sq = re.compile(r"^(.+) \|\| echo '([^']*)'$")
-    re_and_echo_sq = re.compile(r"^(.+) && echo '([^']*)'$")
-
-    # Iteratively strip suffixes
-    suffix_changed = True
-    while suffix_changed:
-        suffix_changed = False
-
-        # Strip: || true
-        m = re_or_true.match(command)
-        if m:
-            command = m.group(1)
-            safe_suffix = " || true" + safe_suffix
-            suffix_changed = True
-            continue
-
-        # Strip: || echo "literal"
-        m = re_or_echo_dq.match(command)
-        if m:
-            command = m.group(1)
-            safe_suffix = f' || echo "{m.group(2)}"' + safe_suffix
-            suffix_changed = True
-            continue
-
-        # Strip: || echo 'literal'
-        m = re_or_echo_sq.match(command)
-        if m:
-            command = m.group(1)
-            safe_suffix = f" || echo '{m.group(2)}'" + safe_suffix
-            suffix_changed = True
-            continue
-
-        # Strip: && echo "literal"
-        m = re_and_echo_dq.match(command)
-        if m:
-            command = m.group(1)
-            safe_suffix = f' && echo "{m.group(2)}"' + safe_suffix
-            suffix_changed = True
-            continue
-
-        # Strip: && echo 'literal'
-        m = re_and_echo_sq.match(command)
-        if m:
-            command = m.group(1)
-            safe_suffix = f" && echo '{m.group(2)}'" + safe_suffix
-            suffix_changed = True
-            continue
-
-        # Strip: 2>&1
-        m = re_2_redir1.match(command)
-        if m:
-            command = m.group(1)
-            safe_suffix = " 2>&1" + safe_suffix
-            suffix_changed = True
-            continue
-
-        # Strip: 2>/dev/null
-        m = re_2_redir_null.match(command)
-        if m:
-            command = m.group(1)
-            safe_suffix = " 2>/dev/null" + safe_suffix
-            suffix_changed = True
-            continue
-
-    if safe_suffix and DEBUG:
-        print(f"SUFFIX_STRIPPED[{safe_suffix}]", file=sys.stderr)
-
-    return command
-
-
-def _strip_quoted_content(command):
-    """Strip content inside quotes, replacing with safe placeholders.
-
-    Single-quoted: everything between ' and ' is replaced.
-    Double-quoted: everything between " and " is replaced (backslash-escaped \" skipped).
-    This allows P3/P4/P7 checks to ignore characters inside quotes.
-    """
-    result = []
-    i = 0
-    while i < len(command):
-        if command[i] == "'":
-            j = command.find("'", i + 1)
-            if j == -1:
-                j = len(command)
-            result.append("'_Q_'")
-            i = j + 1
-        elif command[i] == '"':
-            j = i + 1
-            while j < len(command):
-                if command[j] == '\\':
-                    j += 2
-                    continue
-                if command[j] == '"':
-                    break
-                j += 1
-            result.append('"_Q_"')
-            i = j + 1
-        else:
-            result.append(command[i])
-            i += 1
-    return ''.join(result)
-
-
-def phase_2_shell_syntax(command):
-    """Phase 2: Reject dangerous shell syntax."""
-    # Guard P1: Backtick command substitution (pipe/chain/;/>/< handled by compound validation)
-    if '`' in command:
-        reject("P1:backtick_substitution")
-
-    # Guard P1b: Bare & (background execution) -- && is handled by compound validation
-    # Also exclude >&N (fd dup, e.g. 2>&1) and &> (bash stdout+stderr redirect)
-    if re.search(r'(?<!&)(?<!>)&(?!&)(?!>)', command):
-        reject("P1:background_execution")
-
-    # Strip quoted content for expansion checks (P3/P4/P7).
-    # Dangerous characters inside quotes are not shell-expanded.
-    stripped = _strip_quoted_content(command)
-
-    # Guard P3: Command substitution $(...)
-    if re.search(r'\$\(', stripped):
-        reject("P3:cmd_substitution")
-
-    # Guard P4 (F-014): Variable/arithmetic expansion
-    # Broadened regex: catch $!, $#, $@, $-, $? and all other $X patterns
-    # Uses stripped command: "$VAR" inside quotes is safe (no shell expansion)
-    if re.search(r'\$[^\s]', stripped):
-        reject("P4:var_expansion")
-
-    # Guard P5: Environment variable assignment
-    if re.search(r'^[A-Za-z_][A-Za-z0-9_]*=', command):
-        reject("P5:env_assignment")
-
-    # Guard P6: Tilde expansion
-    if re.search(r'(^| )~', command):
-        reject("P6:tilde_expansion")
-
-    # Guard P7: Glob/brace expansion
-    # Uses stripped command: [brackets] inside quotes are not glob patterns
-    if re.search(r'[*?\[{]', stripped):
-        reject("P7:glob_chars")
-
-    # Guard P8: No-space interpreter (python3scripts/foo.py, bashscripts/run.sh)
-    # This catches cases where interpreter and path are concatenated without space
-    if re.match(r'^(python3|bash|sh)(scripts/|\.claude/)', command):
-        reject("P2:no_space_after_interpreter")
-
-    # Guard P8.5 (F-001): Reject quote/backslash characters in command name position
-    # This blocks: "rm", 'bash', $'curl', \rm, r""m
-    first_space = command.find(' ')
-    cmd_part = command[:first_space] if first_space > 0 else command
-    if re.search(r"""['\"\\]""", cmd_part):
-        reject("P2:quoted_command_name")
 
 
 def phase_5_normalize_path(script_path):
@@ -283,7 +81,6 @@ def phase_5_normalize_path(script_path):
     if not script_path:
         reject("P4:no_script_path")
 
-    # Normalize to absolute
     if script_path.startswith('/'):
         abs_path = canonicalize_path(script_path)
     else:
@@ -292,8 +89,6 @@ def phase_5_normalize_path(script_path):
     if not abs_path:
         reject("P5:empty_abs_path")
 
-    # Check if the resolved path escapes project directory
-    # This catches cases like "scripts/../../etc/passwd"
     project_prefix = PROJECT_DIR + "/"
     if abs_path != PROJECT_DIR and not abs_path.startswith(project_prefix):
         reject("P5:path_traversal_escape")
@@ -301,94 +96,17 @@ def phase_5_normalize_path(script_path):
     return abs_path
 
 
-def phase_6_project_check(abs_path, config):
-    """Phase 6: Check PROJECT_DIR containment (+ allowed_dirs_extra).
+# --- Command validation ---
 
-    Path containment check only.
-    Returns True if contained, False otherwise.
-    """
-    canon_abs = canonicalize_path(abs_path)
+def validate_single_command_words(words, config):
+    """Validate a single command given its word list (from bashlex AST).
 
-    # Check 1: PROJECT_DIR containment
-    canon_project = canonicalize_path(PROJECT_DIR)
-    project_prefix = canon_project + "/"
-
-    if canon_abs == canon_project or canon_abs.startswith(project_prefix):
-        return True
-
-    # Check 2: allowed_dirs_extra containment
-    allowed_dirs_extra = config.get("allowed_dirs_extra", [])
-    for extra_dir in allowed_dirs_extra:
-        if not extra_dir:
-            continue
-        canon_extra = canonicalize_path(extra_dir)
-        if not canon_extra:
-            continue
-        extra_prefix = canon_extra + "/"
-        if canon_abs == canon_extra or canon_abs.startswith(extra_prefix):
-            return True
-
-    return False
-
-
-# --- Compound command validation (pipe/chain/redirect) ---
-
-@dataclass
-class Segment:
-    command: str        # command part
-    seg_type: str       # "cmd", "redirect_out", "redirect_in"
-    redirect_path: str  # redirect target/source path (empty for seg_type="cmd")
-
-
-def split_compound(command: str) -> List[Segment]:
-    """Split compound command into segments."""
-    segments = []
-
-    # Extract redirects first (> file, >> file, < file)
-    # 2>&1, 2>/dev/null are handled by Phase 1.5
-    redirect_pattern = re.compile(r'\s(>>?|<)\s(\S+)')
-    redirects = redirect_pattern.findall(command)
-    cmd_without_redirect = redirect_pattern.sub('', command).strip()
-
-    # Split by pipe/chain (||, &&, |, ; from left to right)
-    if re.search(r'\s(?:\|\||&&|[|;])\s', cmd_without_redirect):
-        parts = re.split(r'\s*(?:\|\||&&|[|;])\s*', cmd_without_redirect)
-        for part in parts:
-            part = part.strip()
-            if part:
-                segments.append(Segment(command=part, seg_type="cmd", redirect_path=""))
-    else:
-        segments.append(Segment(command=cmd_without_redirect, seg_type="cmd", redirect_path=""))
-
-    # Add redirect segments
-    for op, path in redirects:
-        if op in ('>', '>>'):
-            segments.append(Segment(command="", seg_type="redirect_out", redirect_path=path))
-        else:  # <
-            segments.append(Segment(command="", seg_type="redirect_in", redirect_path=path))
-
-    return segments
-
-
-def is_dangerous_pipe(command: str, config) -> bool:
-    """Check if pipe right-hand side is a dangerous target (config-based)."""
-    first_word = command.strip().split()[0] if command.strip() else ""
-    basename = first_word.split('/')[-1] if '/' in first_word else first_word
-    return basename in config.get("pipe_deny_right", [])
-
-
-def validate_single_command(command, config):
-    """
-    Phase 3-7 integrated validation. Uses new tools structure.
     Returns: ("allow"|"ask"|"reject", reason)
     """
-    if not command.strip():
+    if not words:
         return ("reject", "empty_segment")
 
-    words = command.strip().split()
     cmd_name = words[0]
-
-    # Basename for path-based commands (/usr/bin/git etc.)
     cmd_basename = os.path.basename(cmd_name)
 
     # NEVER_SAFE hardcoded
@@ -396,9 +114,6 @@ def validate_single_command(command, config):
         return ("ask", f"never_safe:{cmd_basename}")
 
     # Project-contained command path -> auto-allow
-    # e.g., .venv/bin/pytest, scripts/deploy.sh -> allow if within PROJECT_DIR or allowed_dirs_extra
-    # Uses normpath (not realpath) to avoid resolving symlinks -- .venv/bin/python is a symlink
-    # but its location is within the project, so it should be allowed.
     if '/' in cmd_name:
         if cmd_name.startswith('/'):
             abs_cmd = os.path.normpath(cmd_name)
@@ -421,7 +136,6 @@ def validate_single_command(command, config):
         return ("ask", f"unknown_command:{cmd_basename}")
 
     if isinstance(tool_entry, str):
-        # Simple entry: "allow" or "ask"
         return (tool_entry, f"tools:{cmd_basename}")
 
     # Complex entry (map)
@@ -430,7 +144,6 @@ def validate_single_command(command, config):
     for word in words[1:]:
         if word in dangerous_flags:
             return ("ask", f"dangerous_flag:{cmd_basename}:{word}")
-        # Compound short flag decomposition (-rf -> -r, -f)
         if word.startswith("-") and not word.startswith("--") and len(word) > 2:
             for ch in word[1:]:
                 if f"-{ch}" in dangerous_flags:
@@ -450,7 +163,7 @@ def validate_single_command(command, config):
                     and subcommands[1] == allow_parts[1]):
                 return ("allow", f"allow_subcommand:{cmd_basename}:{allow_sub}")
 
-    # 3. ask subcommand check (space-delimited DSL)
+    # 3. ask subcommand check
     ask_subs = tool_entry.get("ask", [])
     for ask_sub in ask_subs:
         ask_parts = ask_sub.split()
@@ -468,37 +181,51 @@ def validate_single_command(command, config):
     return (default_action, f"tools_default:{cmd_basename}")
 
 
-def validate_compound_command(command: str, config) -> Tuple[str, str]:
-    """Validate compound commands (pipe/chain/redirect) by splitting and checking each segment.
-    Returns: ("allow", reason) or ("reject"|"ask", reason)
-    """
-    # Check dangerous pipe right-hand side patterns first
-    pipe_parts = re.split(r'\s*\|\s*', command)
-    if len(pipe_parts) > 1:
-        for part in pipe_parts[1:]:
-            part = part.strip()
-            if is_dangerous_pipe(part, config):
-                return ("reject", f"dangerous_pipe_target:{part.split()[0]}")
+def validate_parsed_result(parsed: ParseResult, config) -> Tuple[str, str]:
+    """Validate a parsed command result against config.
 
-    segments = split_compound(command)
+    Checks:
+    1. Dangerous AST nodes (from bashlex)
+    2. Dangerous pipe targets (config-based)
+    3. Each command segment against tools config
+    4. Redirect paths for project containment
+    """
+    # 1. Dangerous nodes from AST (variable expansion, cmd substitution, etc.)
+    if parsed.dangerous_nodes:
+        return ("deny", parsed.dangerous_nodes[0])
+
     results = []
 
-    for seg in segments:
-        if seg.seg_type == "cmd":
-            if not seg.command:
-                continue
-            decision, reason = validate_single_command(seg.command, config)
-            results.append((decision, reason))
+    # 2. Dangerous pipe targets
+    if parsed.pipe_commands:
+        pipe_deny_right = config.get("pipe_deny_right", [])
+        for pipe_group in parsed.pipe_commands:
+            # Check all non-first commands in each pipe group
+            for cmd_info in pipe_group[1:]:
+                if cmd_info.words:
+                    basename = os.path.basename(cmd_info.words[0])
+                    if basename in pipe_deny_right:
+                        return ("reject", f"dangerous_pipe_target:{basename}")
 
-        elif seg.seg_type in ("redirect_out", "redirect_in"):
-            if seg.redirect_path == "/dev/null":
-                results.append(("allow", "redirect:/dev/null"))
-                continue
+    # 3. Validate each command segment
+    for cmd_info in parsed.commands:
+        decision, reason = validate_single_command_words(cmd_info.words, config)
+        results.append((decision, reason))
+
+    # 4. Validate redirect paths
+    for redir in parsed.redirects:
+        if redir.fd_dup:
+            results.append(("allow", "redirect:fd_dup"))
+            continue
+        if redir.path == "/dev/null":
+            results.append(("allow", "redirect:/dev/null"))
+            continue
+        if redir.path:
             try:
-                phase_5_normalize_path(seg.redirect_path)
+                phase_5_normalize_path(redir.path)
                 results.append(("allow", "redirect:project_contained"))
-            except Exception:
-                results.append(("reject", f"redirect:outside_project:{seg.redirect_path}"))
+            except (RejectException, Exception):
+                results.append(("reject", f"redirect:outside_project:{redir.path}"))
 
     if not results:
         return ("reject", "no_segments")
@@ -509,8 +236,12 @@ def validate_compound_command(command: str, config) -> Tuple[str, str]:
         return non_allows[0]
 
     reasons = [r for _, r in results]
-    return ("allow", f"compound:{'+'.join(reasons)}")
+    if parsed.is_compound:
+        return ("allow", f"compound:{'+'.join(reasons)}")
+    return ("allow", reasons[0] if reasons else "allowed")
 
+
+# --- Audit & Output ---
 
 def _get_audit_log_path():
     """Get audit log path from config or default."""
@@ -537,7 +268,7 @@ def _write_audit_log(decision, reason):
         with open(audit_path, "a") as f:
             f.write(log_entry + "\n")
     except Exception:
-        pass  # Never let logging failures break the hook
+        pass
 
 
 def output_allow(reason="allowed"):
@@ -602,39 +333,34 @@ def main():
     command = input_data.get("tool_input", {}).get("command", "")
     _current_command = command
 
-    # Pre-validation (Phase S0, 1, 1.5, 2) -- before compound command splitting
+    # Pre-parse validation (before bashlex)
     try:
         phase_s0_null_byte_check(input_str, command)
         phase_1_sanitize(input_data, command)
-        # Strip bash line continuations (backslash + newline -> join lines)
-        command = command.replace('\\\n', '')
-        command = phase_1_5_strip_safe_suffixes(command)
-        phase_2_shell_syntax(command)
     except RejectException as e:
         output_deny(e.reason)
         return
 
-    # Compound command detection (after Phase 2)
-    # |, ;, ||, && are treated as compound even without spaces (security hardening)
-    # Redirects >, <, >> only with spaces (to avoid confusion with path characters)
-    is_compound = bool(re.search(r'(\|\||&&|[|;])|[ \t](>>?|<)[ \t]', command))
+    # Strip bash line continuations (backslash + newline -> join lines)
+    command = command.replace('\\\n', '')
 
-    # Phase 3-7
-    if is_compound:
-        decision, reason = validate_compound_command(command, config)
-    else:
-        decision, reason = validate_single_command(command, config)
+    # Parse with bashlex
+    parsed = parse_command(command)
+
+    if parsed is None:
+        # bashlex could not parse → ask for safety
+        output_ask("bashlex_parse_failure")
+        return
+
+    # Validate parsed result against config
+    decision, reason = validate_parsed_result(parsed, config)
 
     if decision == "allow":
         output_allow(reason)
+    elif decision == "deny":
+        output_deny(reason)
     else:
-        # Branch deny vs ask based on reason
-        deny_reasons = {"null_byte", "json_error", "empty_command", "control_char",
-                        "unicode_whitespace", "unknown_tool", "no_segments"}
-        if reason.startswith("dangerous_pipe_target:") or reason in deny_reasons:
-            output_deny(reason)
-        else:
-            output_ask(reason)
+        output_ask(reason)
 
 
 if __name__ == "__main__":

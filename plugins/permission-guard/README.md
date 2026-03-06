@@ -12,7 +12,7 @@ The goal is to reduce permission fatigue for routine operations while maintainin
 
 ## Validation Flow
 
-Every command passes through two stages: **pre-validation** (before compound detection) and **post-validation** (after compound detection).
+Every command passes through two stages: **pre-validation** (input sanitization) and **AST-based validation** (structural analysis via bashlex).
 
 ### Pre-validation
 
@@ -20,14 +20,29 @@ Every command passes through two stages: **pre-validation** (before compound det
 |------|-------------|
 | **S0 -- Null byte check** | Rejects null bytes and empty commands |
 | **Phase 1 -- Sanitize** | Rejects control characters (0x00-0x1F, 0x7F), Unicode whitespace (U+0085, U+00A0, U+2000-U+200B, etc.), and non-Bash tool names |
-| **Phase 1.5 -- Strip safe suffixes** | Iteratively removes safe trailing patterns (e.g. `2>/dev/null`) so they do not interfere with later checks |
-| **Phase 2 -- Shell syntax** | Rejects dangerous shell constructs: backtick substitution, background execution, command substitution, variable expansion, environment variable assignment, tilde expansion, glob/brace expansion, interpreter-path concatenation, and quoted command names |
 
-### Compound detection
+### AST parsing (bashlex)
 
-After pre-validation, a regex determines whether the command is compound (contains pipes, chains, semicolons, or redirections).
+After pre-validation, the command is parsed into an AST using [bashlex](https://github.com/idank/bashlex). This replaces the previous regex-based approach with proper structural analysis.
 
-**Simple commands** go to `validate_single_command`:
+The AST walker detects dangerous constructs by node type:
+
+| AST node | Detected construct | Decision |
+|----------|-------------------|----------|
+| `CommandsubstitutionNode` | `` `cmd` `` or `$(cmd)` | deny |
+| `ParameterNode` | `$VAR`, `$!`, `$#`, etc. | deny |
+| `TildeNode` | `~/path` | deny |
+| `AssignmentNode` | `FOO=bar` | deny |
+| `OperatorNode(op='&')` | Background execution | deny |
+| Glob chars in `WordNode` | `*`, `?`, `[`, `{` | deny |
+
+If bashlex cannot parse the command, the decision falls back to **ask** (safe default).
+
+Pipes, chains (`&&`, `||`, `;`), subshells (`(cmd)`), and redirects are decomposed into individual commands for per-command validation.
+
+### Per-command validation
+
+Each extracted command is validated against the tools configuration:
 
 | Check | Result |
 |-------|--------|
@@ -37,12 +52,7 @@ After pre-validation, a regex determines whether the command is compound (contai
 | Command found in `tools` dict as a rule entry -- check `dangerous_flags`, `ask` subcommands, then fall back to `default` | allow or ask |
 | Command not in `tools` dict at all | ask (`unknown_command`) |
 
-**Compound commands** go to `validate_compound_command`:
-
-1. **Pipe right-side check** -- if any command after a pipe is in `pipe_deny_right` (shells, interpreters, `eval`, `exec`, `xargs`), deny immediately
-2. **Segment split** -- break into command segments and redirect segments
-3. **Per-segment validation** -- each command segment is validated via `validate_single_command`; each redirect target is checked for project containment (`/dev/null` is always allowed)
-4. **Aggregation** -- if any segment is non-allow, that result is returned; if all segments are allow, the compound command is allowed
+For compound commands, pipe right-side commands are checked against `pipe_deny_right`, and redirect targets are checked for project containment (`/dev/null` is always allowed).
 
 ### Decision outputs
 
@@ -52,7 +62,7 @@ After pre-validation, a regex determines whether the command is compound (contai
 | **ask** | Escalated to Claude Code's permission dialog |
 | **deny** | Hard-blocked, command cannot run |
 
-Pre-validation failures and dangerous pipe targets produce **deny**. NEVER_SAFE and unknown commands produce **ask**. Everything else follows the tools configuration.
+Pre-validation failures and dangerous AST nodes produce **deny**. NEVER_SAFE and unknown commands produce **ask**. Everything else follows the tools configuration.
 
 ## Installation
 
@@ -60,7 +70,7 @@ Pre-validation failures and dangerous pipe targets produce **deny**. NEVER_SAFE 
 /plugin install permission-guard@skaji18-plugins
 ```
 
-After installation, run the setup skill to create a venv, install dependencies, and generate your user config template:
+After installation, run the setup skill to create a venv, install dependencies, and generate your config templates:
 
 ```bash
 /permission-guard:setup
@@ -68,12 +78,13 @@ After installation, run the setup skill to create a venv, install dependencies, 
 
 ## Configuration
 
-### 2-Layer Config Merge
+### 3-Layer Config Merge
 
 | Layer | Source | Purpose |
 |-------|--------|---------|
 | 1 | `config/defaults.yaml` | Base rules shipped with the plugin |
-| 2 | `.claude/permission-guard.yaml` | Project-specific user overrides |
+| 2 | `~/.claude/permission-guard.yaml` | User-wide global overrides |
+| 3 | `CLAUDE_PROJECT_DIR/.claude/permission-guard.yaml` | Project-specific overrides |
 
 ### tools -- Unified Structure (3 entry types)
 
@@ -109,9 +120,9 @@ The `ask` list supports multi-word subcommands (e.g., `"pr merge"`). The `danger
 
 Commands blocked when they appear on the right side of a pipe. Defaults include: `bash`, `sh`, `zsh`, `ksh`, `fish`, `csh`, `tcsh`, `python`, `python3`, `perl`, `ruby`, `node`, `eval`, `exec`, `xargs`.
 
-### User Overrides (`.claude/permission-guard.yaml`)
+### User Overrides
 
-Created automatically by `/permission-guard:setup`.
+Created automatically by `/permission-guard:setup` at both global and project levels.
 
 | Key | Type | Description |
 |-----|------|-------------|
@@ -141,15 +152,16 @@ audit_log_path: ""
 
 | Command | Description |
 |---------|-------------|
-| `/permission-guard:setup` | Create venv, install deps, generate user config template, and run tests |
-| `/permission-guard:show` | Display effective config (defaults merged with user overrides, with diff markers) |
+| `/permission-guard:setup` | Create venv, install deps, generate config templates, and run tests |
+| `/permission-guard:show` | Display effective config (defaults merged with overrides, with diff markers) |
 | `/permission-guard:optimize` | Analyze decision log and suggest config changes to reduce unnecessary prompts |
-| `/permission-guard:permission-test` | Run the validation test suite to verify hook functionality |
+| `/permission-guard:permission-test` | Run the E2E test suite to verify hook functionality |
 
 ## Dependencies
 
 - **Python 3** -- hook script runtime
 - **PyYAML** -- config file loading
+- **bashlex** -- shell command AST parsing
 
 ## Plugin Structure
 
@@ -160,8 +172,18 @@ plugins/permission-guard/
 ├── hooks/
 │   └── hooks.json             # PreToolUse hook definition
 ├── scripts/
-│   ├── permission-fallback    # Main validation script
-│   └── test-permission.sh     # Validation test suite
+│   ├── boot                   # Hook entry point (shell wrapper)
+│   ├── pg/                    # Python package
+│   │   ├── __init__.py
+│   │   ├── __main__.py        # CLI dispatch
+│   │   ├── parser.py          # bashlex AST parser
+│   │   ├── fallback.py        # Main hook logic
+│   │   ├── config.py          # 3-layer config loader
+│   │   ├── show.py            # /permission-guard:show
+│   │   ├── analyze.py         # /permission-guard:optimize
+│   │   └── apply.py           # Config proposal applier
+│   ├── setup.sh               # /permission-guard:setup
+│   └── test_e2e.py            # E2E test suite (144 cases)
 ├── config/
 │   └── defaults.yaml          # Default tool rules
 ├── commands/
