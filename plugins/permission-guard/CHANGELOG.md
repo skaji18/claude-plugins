@@ -1,5 +1,19 @@
 # Changelog
 
+## [1.4.0] - 2026-03-09
+
+### Changed
+- **tree-sitter-bash migration** — replaced bashlex with [tree-sitter-bash](https://github.com/tree-sitter/tree-sitter-bash) for AST parsing. Fixes heredoc support, quoted string handling, and special variable recognition that bashlex could not handle.
+- **P5 demoted** — `variable_assignment` (`FOO=bar`) now produces **ask** instead of **deny**, reducing false positives for safe patterns like `git -c key=val`.
+- **P6 removed** — tilde expansion detection removed entirely (was unnecessary with proper path resolution).
+- **P7 improved** — glob detection now uses tree-sitter quoting context. Quoted strings (`'...'`, `"..."`) are no longer flagged for glob characters, fixing false positives on patterns like `jq '.[].name'`.
+- **Safe special variables** — `$?`, `$#`, `$!`, `$-`, `$0`, `$_`, `$@`, `$$` are recognized as safe and allowed.
+- Dependencies changed: `bashlex` → `tree-sitter` + `tree-sitter-bash`
+
+### Added
+- **cp** added to defaults as `"allow"`
+- **gh** added to defaults with allow list for read-only subcommands (`pr view`, `issue list`, etc.) and `dangerous_flags: ["-X", "--method"]`
+
 ## [1.3.0] - 2026-03-07
 
 ### Changed

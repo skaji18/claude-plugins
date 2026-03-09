@@ -1,26 +1,31 @@
 """
-pg.parser -- bashlex-based shell command parser for permission-guard.
+pg.parser -- tree-sitter-bash based shell command parser for permission-guard.
 
-Replaces regex-based parsing (phase_2_shell_syntax, split_compound,
-_strip_quoted_content) with proper AST analysis.
+Uses tree-sitter-bash for proper AST analysis including heredocs,
+quoted strings, and special variables.
 
 Parse failure → returns None (caller should fall back to "ask").
 """
 
-import os
 import re
 from dataclasses import dataclass, field
-from typing import List, Optional, Tuple
+from typing import List, Optional
 
-import bashlex
+import tree_sitter_bash as tsbash
+from tree_sitter import Language, Parser
+
+# --- Parser setup ---
+
+_BASH_LANGUAGE = Language(tsbash.language())
+_parser = Parser(_BASH_LANGUAGE)
 
 
-# --- Data structures ---
+# --- Data structures (same interface as before) ---
 
 @dataclass
 class CommandInfo:
     """A single simple command extracted from the AST."""
-    words: List[str]  # command name + args (quotes already stripped by bashlex)
+    words: List[str]  # command name + args (quotes stripped)
     raw: str = ""     # original text span
 
 
@@ -37,195 +42,272 @@ class ParseResult:
     """Result of parsing a shell command."""
     commands: List[CommandInfo] = field(default_factory=list)
     redirects: List[RedirectInfo] = field(default_factory=list)
-    dangerous_nodes: List[str] = field(default_factory=list)  # list of reason strings
+    dangerous_nodes: List[str] = field(default_factory=list)
     is_compound: bool = False
-    pipe_commands: List[List[CommandInfo]] = field(default_factory=list)  # grouped by pipe segment
+    pipe_commands: List[List[CommandInfo]] = field(default_factory=list)
 
 
-# --- Dangerous node types ---
+# --- Safe special variables ---
 
-# These node types in the AST indicate shell features that should be blocked
-DANGEROUS_NODE_HANDLERS = {}
+# These shell special variables are safe (read-only, no injection risk)
+_SAFE_SPECIAL_VARS = {"?", "#", "$", "!", "-", "0", "_", "@", "*"}
 
+# --- Glob detection ---
 
-def _register_dangerous(node_kind):
-    """Decorator to register a dangerous node checker."""
-    def decorator(func):
-        DANGEROUS_NODE_HANDLERS[node_kind] = func
-        return func
-    return decorator
+_GLOB_CHARS_RE = re.compile(r"[*?]")
+_BRACKET_GLOB_RE = re.compile(r"\[.+\]")
 
 
-@_register_dangerous("commandsubstitution")
-def _check_cmd_substitution(node, source):
-    """$() or backtick command substitution."""
-    # Distinguish backtick vs $() by checking source text
-    start, end = node.pos
-    text = source[start:end]
-    if text.startswith("`"):
-        return "P1:backtick_substitution"
-    return "P3:cmd_substitution"
+def _has_unquoted_glob(node, source: bytes) -> bool:
+    """Check if a node contains unquoted glob characters.
+
+    tree-sitter-bash preserves quoting info:
+    - raw_string ('...') and string ("...") nodes contain quoted text
+    - plain word nodes contain unquoted text
+
+    Only flag globs in plain word nodes, not in quoted strings.
+    """
+    t = node.type
+
+    # Quoted strings: never glob
+    if t in ("raw_string", "string"):
+        return False
+
+    # concatenation: check children individually
+    if t == "concatenation":
+        return any(_has_unquoted_glob(child, source) for child in node.children)
+
+    # word node
+    if t == "word":
+        # If has children (expansions etc.), recurse
+        if node.children:
+            return any(_has_unquoted_glob(child, source) for child in node.children)
+        # Pure word — check for glob chars
+        text = source[node.start_byte:node.end_byte].decode()
+        if _GLOB_CHARS_RE.search(text):
+            return True
+        if _BRACKET_GLOB_RE.search(text):
+            return True
+
+    return False
 
 
-@_register_dangerous("parameter")
-def _check_parameter(node, source):
-    """$VAR, $!, $#, etc."""
-    return "P4:var_expansion"
+# --- Word text extraction ---
 
-
-@_register_dangerous("tilde")
-def _check_tilde(node, source):
-    """~ expansion."""
-    return "P6:tilde_expansion"
-
-
-@_register_dangerous("assignment")
-def _check_assignment(node, source):
-    """FOO=bar environment variable assignment."""
-    return "P5:env_assignment"
+def _extract_word_text(node, source: bytes) -> str:
+    """Extract the effective text from a word/string node, stripping quotes."""
+    t = node.type
+    text = source[node.start_byte:node.end_byte].decode()
+    if t == "raw_string":
+        return text[1:-1] if len(text) >= 2 else text
+    if t == "string":
+        return text[1:-1] if len(text) >= 2 else text
+    if t == "concatenation":
+        return "".join(_extract_word_text(c, source) for c in node.children)
+    return text
 
 
 # --- AST walker ---
 
-def _walk_ast(node, source, result: ParseResult):
-    """Recursively walk bashlex AST, collecting commands and dangerous nodes."""
-    kind = node.kind
+def _walk(node, source: bytes, result: ParseResult):
+    """Recursively walk tree-sitter AST."""
+    t = node.type
 
-    # Check for dangerous node types
-    handler = DANGEROUS_NODE_HANDLERS.get(kind)
-    if handler:
-        reason = handler(node, source)
-        if reason:
-            result.dangerous_nodes.append(reason)
-        # Don't return early for commandsubstitution -- we still want to
-        # record it but we don't need to walk its children (they're inside
-        # the substitution which is already flagged)
-        if kind in ("commandsubstitution", "parameter", "tilde", "assignment"):
-            return
+    if t == "program":
+        for child in node.children:
+            if child.type == "&":
+                result.dangerous_nodes.append("P1:background_execution")
+            else:
+                _walk(child, source, result)
 
-    if kind == "command":
-        cmd_info = _extract_command_info(node, source, result)
-        if cmd_info:
-            result.commands.append(cmd_info)
+    elif t == "command":
+        _extract_command(node, source, result)
 
-    elif kind == "pipeline":
+    elif t == "pipeline":
         result.is_compound = True
         pipe_group = []
-        for part in node.parts:
-            if part.kind == "command":
-                cmd_info = _extract_command_info(part, source, result)
-                if cmd_info:
-                    pipe_group.append(cmd_info)
-                    result.commands.append(cmd_info)
-            elif part.kind == "pipe":
-                pass  # separator
-            else:
-                _walk_ast(part, source, result)
+        for child in node.children:
+            if child.type == "command":
+                cmd = _extract_command(child, source, result)
+                if cmd:
+                    pipe_group.append(cmd)
+            elif child.type == "redirected_statement":
+                cmd = _handle_redirected_statement(child, source, result)
+                if cmd:
+                    pipe_group.append(cmd)
+            elif child.type not in ("|", "|&"):
+                _walk(child, source, result)
         if pipe_group:
             result.pipe_commands.append(pipe_group)
 
-    elif kind == "list":
+    elif t == "list":
         result.is_compound = True
-        for part in node.parts:
-            if part.kind == "operator":
-                # Check for background &
-                if part.op == "&":
-                    result.dangerous_nodes.append("P1:background_execution")
+        for child in node.children:
+            text = source[child.start_byte:child.end_byte].decode()
+            if child.type in ("&&", "||", ";"):
+                pass
+            elif text == "&":
+                result.dangerous_nodes.append("P1:background_execution")
             else:
-                _walk_ast(part, source, result)
+                _walk(child, source, result)
 
-    elif kind == "compound":
-        # Subshell: (cmd) -- walk children to extract commands for validation
+    elif t == "redirected_statement":
+        _handle_redirected_statement(node, source, result)
+
+    elif t == "subshell":
         result.is_compound = True
-        if hasattr(node, "list") and node.list:
-            for item in node.list:
-                if item.kind == "reservedword":
-                    pass  # ( and ) delimiters
-                else:
-                    _walk_ast(item, source, result)
+        for child in node.children:
+            if child.type not in ("(", ")"):
+                _walk(child, source, result)
 
-    elif hasattr(node, "parts") and node.parts:
-        for part in node.parts:
-            _walk_ast(part, source, result)
+    elif t in ("if_statement", "while_statement", "for_statement",
+               "compound_statement", "case_statement"):
+        result.is_compound = True
+        for child in node.children:
+            _walk(child, source, result)
 
-    elif hasattr(node, "list") and node.list:
-        for item in node.list:
-            _walk_ast(item, source, result)
+    else:
+        for child in node.children:
+            _walk(child, source, result)
 
 
-def _extract_command_info(cmd_node, source, result: ParseResult) -> Optional[CommandInfo]:
-    """Extract command words and redirects from a CommandNode."""
+def _handle_redirected_statement(node, source: bytes, result: ParseResult) -> Optional[CommandInfo]:
+    """Handle a redirected_statement node (command + redirects)."""
+    cmd_info = None
+    for child in node.children:
+        if child.type == "command":
+            cmd_info = _extract_command(child, source, result)
+        elif child.type == "file_redirect":
+            _extract_file_redirect(child, source, result)
+        elif child.type == "heredoc_redirect":
+            pass  # Heredocs are inline input, not dangerous
+        elif child.type == "pipeline":
+            _walk(child, source, result)
+        else:
+            _walk(child, source, result)
+    return cmd_info
+
+
+def _extract_command(node, source: bytes, result: ParseResult) -> Optional[CommandInfo]:
+    """Extract a command node into CommandInfo."""
     words = []
-    for part in cmd_node.parts:
-        if part.kind == "word":
-            # Check for dangerous sub-parts within the word
-            if hasattr(part, "parts") and part.parts:
-                for sub in part.parts:
-                    handler = DANGEROUS_NODE_HANDLERS.get(sub.kind)
-                    if handler:
-                        reason = handler(sub, source)
-                        if reason:
-                            result.dangerous_nodes.append(reason)
-            words.append(part.word)
 
-        elif part.kind == "redirect":
-            redir = _extract_redirect(part, source, result)
-            if redir:
-                result.redirects.append(redir)
+    for child in node.children:
+        t = child.type
 
-        elif part.kind == "assignment":
-            result.dangerous_nodes.append("P5:env_assignment")
+        if t == "command_name":
+            for name_child in child.children:
+                words.append(_extract_word_text(name_child, source))
+                _check_dangerous_in_node(name_child, source, result)
+
+        elif t in ("word", "raw_string", "string", "concatenation", "number"):
+            words.append(_extract_word_text(child, source))
+            _check_dangerous_in_node(child, source, result)
+            if _has_unquoted_glob(child, source):
+                if "P7:glob_chars" not in result.dangerous_nodes:
+                    result.dangerous_nodes.append("P7:glob_chars")
+
+        elif t == "variable_assignment":
+            if "P5:env_assignment" not in result.dangerous_nodes:
+                result.dangerous_nodes.append("P5:env_assignment")
+
+        elif t == "simple_expansion":
+            _check_expansion(child, source, result)
+
+        elif t == "expansion":
+            result.dangerous_nodes.append("P4:var_expansion")
+
+        elif t == "command_substitution":
+            text = source[child.start_byte:child.end_byte].decode()
+            if text.startswith("`"):
+                result.dangerous_nodes.append("P1:backtick_substitution")
+            else:
+                result.dangerous_nodes.append("P3:cmd_substitution")
+
+        elif t == "file_redirect":
+            _extract_file_redirect(child, source, result)
+
+        elif t == "heredoc_redirect":
+            pass  # Safe
 
     if not words:
         return None
 
-    start, end = cmd_node.pos
-    return CommandInfo(words=words, raw=source[start:end].strip())
+    raw = source[node.start_byte:node.end_byte].decode().strip()
+    cmd = CommandInfo(words=words, raw=raw)
+    result.commands.append(cmd)
+    return cmd
 
 
-def _extract_redirect(redir_node, source, result: ParseResult) -> Optional[RedirectInfo]:
-    """Extract redirect info from a RedirectNode."""
-    rtype = redir_node.type
-
-    # fd duplication (2>&1 etc.)
-    if rtype == ">&" and hasattr(redir_node, "output") and isinstance(redir_node.output, int):
-        return RedirectInfo(redirect_type=rtype, path="", fd_dup=True)
-
-    # File redirect
-    if hasattr(redir_node, "output") and redir_node.output is not None:
-        output = redir_node.output
-        if hasattr(output, "word"):
-            # Check for dangerous sub-parts in redirect target
-            if hasattr(output, "parts") and output.parts:
-                for sub in output.parts:
-                    handler = DANGEROUS_NODE_HANDLERS.get(sub.kind)
-                    if handler:
-                        reason = handler(sub, source)
-                        if reason:
-                            result.dangerous_nodes.append(reason)
-            return RedirectInfo(redirect_type=rtype, path=output.word)
-
-    return None
+def _check_dangerous_in_node(node, source: bytes, result: ParseResult):
+    """Recursively check a node for dangerous sub-nodes."""
+    for child in node.children:
+        t = child.type
+        if t == "simple_expansion":
+            _check_expansion(child, source, result)
+        elif t == "expansion":
+            result.dangerous_nodes.append("P4:var_expansion")
+        elif t == "command_substitution":
+            text = source[child.start_byte:child.end_byte].decode()
+            if text.startswith("`"):
+                result.dangerous_nodes.append("P1:backtick_substitution")
+            else:
+                result.dangerous_nodes.append("P3:cmd_substitution")
+        elif child.children:
+            _check_dangerous_in_node(child, source, result)
 
 
-# --- Glob detection (not covered by bashlex) ---
+def _check_expansion(node, source: bytes, result: ParseResult):
+    """Check a simple_expansion ($VAR, $?, etc.) for safety."""
+    for child in node.children:
+        if child.type == "special_variable_name":
+            var_name = source[child.start_byte:child.end_byte].decode()
+            if var_name in _SAFE_SPECIAL_VARS:
+                return  # Safe: $?, $#, $!, etc.
+            result.dangerous_nodes.append("P4:var_expansion")
+            return
+        elif child.type == "variable_name":
+            result.dangerous_nodes.append("P4:var_expansion")
+            return
+        elif child.type == "$":
+            pass  # The $ sign itself
+        else:
+            result.dangerous_nodes.append("P4:var_expansion")
+            return
 
-# bashlex treats glob chars as plain WordNode text, so we need regex for these
-_GLOB_RE = re.compile(r"[*?\[{]")
 
+def _extract_file_redirect(node, source: bytes, result: ParseResult):
+    """Extract redirect info from a file_redirect node."""
+    redir_type = None
+    path = None
+    fd_dup = False
 
-def _check_glob_in_words(result: ParseResult):
-    """Check for unquoted glob/brace characters in command words.
+    for child in node.children:
+        t = child.type
+        if t in (">", ">>", "<", ">&", "<&", ">|"):
+            redir_type = t
+        elif t in ("word", "raw_string", "string", "concatenation"):
+            text = _extract_word_text(child, source)
+            if redir_type == ">&" and text.isdigit():
+                fd_dup = True
+                path = ""
+            else:
+                path = text
+            _check_dangerous_in_node(child, source, result)
+        elif t == "number":
+            pass  # fd number before operator (e.g., 2>)
+        elif t == "simple_expansion":
+            _check_expansion(child, source, result)
+            path = source[child.start_byte:child.end_byte].decode()
 
-    bashlex strips quotes from WordNode.word, but glob chars that were
-    inside quotes won't trigger shell expansion. We check the raw source
-    span to distinguish quoted vs unquoted globs.
-    """
-    for cmd in result.commands:
-        for word in cmd.words:
-            if _GLOB_RE.search(word):
-                result.dangerous_nodes.append("P7:glob_chars")
-                return  # One is enough
+    if redir_type and path is not None:
+        result.redirects.append(RedirectInfo(
+            redirect_type=redir_type, path=path, fd_dup=fd_dup
+        ))
+    elif redir_type and fd_dup:
+        result.redirects.append(RedirectInfo(
+            redirect_type=redir_type, path="", fd_dup=True
+        ))
 
 
 # --- Public API ---
@@ -233,26 +315,26 @@ def _check_glob_in_words(result: ParseResult):
 def parse_command(command: str) -> Optional[ParseResult]:
     """Parse a shell command string into a structured ParseResult.
 
-    Returns None if bashlex cannot parse the command (caller should
-    fall back to "ask" for safety).
+    Returns None if the command cannot be parsed.
     """
     if not command or not command.strip():
         return None
 
+    source = command.encode()
+
     try:
-        parts = bashlex.parse(command)
-    except bashlex.errors.ParsingError:
-        return None
+        tree = _parser.parse(source)
     except Exception:
-        # bashlex can raise other errors for malformed input
+        return None
+
+    root = tree.root_node
+
+    # tree-sitter has error recovery, but if there are errors
+    # fall back to ask for safety
+    if root.has_error:
         return None
 
     result = ParseResult()
-
-    for node in parts:
-        _walk_ast(node, command, result)
-
-    # Glob check (bashlex doesn't distinguish these)
-    _check_glob_in_words(result)
+    _walk(root, source, result)
 
     return result

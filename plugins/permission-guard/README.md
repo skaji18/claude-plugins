@@ -12,7 +12,7 @@ The goal is to reduce permission fatigue for routine operations while maintainin
 
 ## Validation Flow
 
-Every command passes through two stages: **pre-validation** (input sanitization) and **AST-based validation** (structural analysis via bashlex).
+Every command passes through two stages: **pre-validation** (input sanitization) and **AST-based validation** (structural analysis via tree-sitter-bash).
 
 ### Pre-validation
 
@@ -21,22 +21,23 @@ Every command passes through two stages: **pre-validation** (input sanitization)
 | **S0 -- Null byte check** | Rejects null bytes and empty commands |
 | **Phase 1 -- Sanitize** | Rejects control characters (0x00-0x1F, 0x7F), Unicode whitespace (U+0085, U+00A0, U+2000-U+200B, etc.), and non-Bash tool names |
 
-### AST parsing (bashlex)
+### AST parsing (tree-sitter-bash)
 
-After pre-validation, the command is parsed into an AST using [bashlex](https://github.com/idank/bashlex). This replaces the previous regex-based approach with proper structural analysis.
+After pre-validation, the command is parsed into an AST using [tree-sitter-bash](https://github.com/tree-sitter/tree-sitter-bash). This provides proper structural analysis with full support for heredocs, quoted strings, and special variables.
 
 The AST walker detects dangerous constructs by node type:
 
 | AST node | Detected construct | Decision |
 |----------|-------------------|----------|
-| `CommandsubstitutionNode` | `` `cmd` `` or `$(cmd)` | deny |
-| `ParameterNode` | `$VAR`, `$!`, `$#`, etc. | deny |
-| `TildeNode` | `~/path` | deny |
-| `AssignmentNode` | `FOO=bar` | deny |
-| `OperatorNode(op='&')` | Background execution | deny |
-| Glob chars in `WordNode` | `*`, `?`, `[`, `{` | deny |
+| `command_substitution` | `` `cmd` `` or `$(cmd)` | deny |
+| `simple_expansion` / `expansion` | `$VAR`, `${VAR}`, etc. | deny |
+| `variable_assignment` | `FOO=bar` | ask |
+| Background `&` | Background execution | deny |
+| Unquoted glob chars in `word` | `*`, `?`, `[` | deny |
 
-If bashlex cannot parse the command, the decision falls back to **ask** (safe default).
+Safe special variables (`$?`, `$#`, `$!`, `$-`, `$0`, `$_`, `$@`, `$$`) are recognized and allowed. Quoted strings (`'...'`, `"..."`) are not flagged for glob characters.
+
+If tree-sitter-bash cannot parse the command (or the AST contains errors), the decision falls back to **ask** (safe default).
 
 Pipes, chains (`&&`, `||`, `;`), subshells (`(cmd)`), and redirects are decomposed into individual commands for per-command validation.
 
@@ -62,7 +63,7 @@ For compound commands, pipe right-side commands are checked against `pipe_deny_r
 | **ask** | Escalated to Claude Code's permission dialog |
 | **deny** | Hard-blocked, command cannot run |
 
-Pre-validation failures and dangerous AST nodes produce **deny**. NEVER_SAFE and unknown commands produce **ask**. Everything else follows the tools configuration.
+Pre-validation failures and dangerous AST nodes produce **deny** (except `variable_assignment` which produces **ask**). NEVER_SAFE and unknown commands produce **ask**. Everything else follows the tools configuration.
 
 ## Installation
 
@@ -161,7 +162,7 @@ audit_log_path: ""
 
 - **Python 3** -- hook script runtime
 - **PyYAML** -- config file loading
-- **bashlex** -- shell command AST parsing
+- **tree-sitter** / **tree-sitter-bash** -- shell command AST parsing
 
 ## Plugin Structure
 
@@ -176,7 +177,7 @@ plugins/permission-guard/
 │   ├── pg/                    # Python package
 │   │   ├── __init__.py
 │   │   ├── __main__.py        # CLI dispatch
-│   │   ├── parser.py          # bashlex AST parser
+│   │   ├── parser.py          # tree-sitter-bash AST parser
 │   │   ├── fallback.py        # Main hook logic
 │   │   ├── config.py          # 3-layer config loader
 │   │   ├── show.py            # /permission-guard:show

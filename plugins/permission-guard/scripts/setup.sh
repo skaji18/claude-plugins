@@ -17,7 +17,7 @@ if [ ! -d .venv ]; then
 else
     echo "[skip] .venv already exists"
 fi
-.venv/bin/pip install --quiet pyyaml bashlex
+.venv/bin/pip install --quiet pyyaml tree-sitter tree-sitter-bash
 chmod +x "$PLUGIN_ROOT/scripts/boot"
 echo ""
 

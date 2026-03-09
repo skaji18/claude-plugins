@@ -2,7 +2,7 @@
 pg.fallback -- PermissionRequest fallback hook (Python reimplementation)
 
 Automatically approves PROJECT_DIR-scoped execution (+ allowed_dirs_extra) with validation.
-Uses bashlex for proper shell AST parsing instead of regex-based heuristics.
+Uses tree-sitter-bash for proper shell AST parsing.
 """
 
 import sys
@@ -99,7 +99,7 @@ def phase_5_normalize_path(script_path):
 # --- Command validation ---
 
 def validate_single_command_words(words, config):
-    """Validate a single command given its word list (from bashlex AST).
+    """Validate a single command given its word list (from tree-sitter-bash AST).
 
     Returns: ("allow"|"ask"|"reject", reason)
     """
@@ -185,14 +185,18 @@ def validate_parsed_result(parsed: ParseResult, config) -> Tuple[str, str]:
     """Validate a parsed command result against config.
 
     Checks:
-    1. Dangerous AST nodes (from bashlex)
+    1. Dangerous AST nodes (from tree-sitter-bash)
     2. Dangerous pipe targets (config-based)
     3. Each command segment against tools config
     4. Redirect paths for project containment
     """
     # 1. Dangerous nodes from AST (variable expansion, cmd substitution, etc.)
+    #    P5 (env_assignment) is ask, not deny — common in safe usage (PYTHONPATH=x cmd)
     if parsed.dangerous_nodes:
-        return ("deny", parsed.dangerous_nodes[0])
+        first = parsed.dangerous_nodes[0]
+        if first == "P5:env_assignment":
+            return ("ask", first)
+        return ("deny", first)
 
     results = []
 
@@ -333,7 +337,7 @@ def main():
     command = input_data.get("tool_input", {}).get("command", "")
     _current_command = command
 
-    # Pre-parse validation (before bashlex)
+    # Pre-parse validation (before tree-sitter)
     try:
         phase_s0_null_byte_check(input_str, command)
         phase_1_sanitize(input_data, command)
@@ -344,12 +348,12 @@ def main():
     # Strip bash line continuations (backslash + newline -> join lines)
     command = command.replace('\\\n', '')
 
-    # Parse with bashlex
+    # Parse with tree-sitter-bash
     parsed = parse_command(command)
 
     if parsed is None:
-        # bashlex could not parse → ask for safety
-        output_ask("bashlex_parse_failure")
+        # Parser could not parse → ask for safety
+        output_ask("parse_failure")
         return
 
     # Validate parsed result against config
