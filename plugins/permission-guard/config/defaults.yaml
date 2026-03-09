@@ -63,7 +63,7 @@ tools:
   rm: "ask"
   rmdir: "ask"
   mv: "ask"
-  cp: "ask"
+  cp: "allow"
   find:
     dangerous_flags: ["-exec", "-execdir", "-ok", "-okdir", "-delete", "-fprint", "-fls", "-fprintf"]
     default: "allow"
@@ -84,7 +84,35 @@ tools:
     default: "ask"
 
   gh:
-    ask: ["pr merge", "pr close", "pr reopen", "issue close", "issue delete", "repo delete", "repo archive", "release delete", "release create", "run cancel"]
+    allow:
+      # PR (参照)
+      - "pr view"
+      - "pr list"
+      - "pr status"
+      - "pr diff"
+      - "pr checks"
+      - "pr checkout"
+      # Issue (参照)
+      - "issue view"
+      - "issue list"
+      - "issue status"
+      # Repo (参照)
+      - "repo view"
+      - "repo list"
+      - "repo clone"
+      # Release (参照)
+      - "release view"
+      - "release list"
+      # Actions (参照)
+      - "run view"
+      - "run list"
+      - "workflow view"
+      - "workflow list"
+      # その他 (参照)
+      - "api"
+      - "search"
+      - "status"
+    dangerous_flags: ["-X", "--method"]
     default: "ask"
 
   npm:
