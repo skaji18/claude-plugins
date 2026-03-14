@@ -172,12 +172,23 @@ def validate_parsed_result(parsed: ParseResult, config) -> Tuple[str, str]:
     4. Redirect paths for project containment
     """
     # 1. Dangerous nodes from AST (variable expansion, cmd substitution, etc.)
-    #    P5 (env_assignment) is ask, not deny — common in safe usage (PYTHONPATH=x cmd)
+    #    Decision is driven by phase_policy config (defaults: env_assignment=ask, rest=deny).
+    #    Evaluate ALL nodes; most restrictive policy wins (deny > ask > allow).
+    phase_policy = config.get("phase_policy", {})
     if parsed.dangerous_nodes:
-        first = parsed.dangerous_nodes[0]
-        if first == "P5:env_assignment":
-            return ("ask", first)
-        return ("deny", first)
+        worst_decision = "allow"
+        worst_node = parsed.dangerous_nodes[0]
+        for node in parsed.dangerous_nodes:
+            phase_key = node.split(":", 1)[1] if ":" in node else node
+            policy = phase_policy.get(phase_key, "ask")
+            if policy == "deny":
+                return ("deny", node)
+            elif policy == "ask" and worst_decision != "deny":
+                worst_decision = "ask"
+                worst_node = node
+        if worst_decision != "allow":
+            return (worst_decision, worst_node)
+        # All nodes are "allow" → fall through to tools/pipes/redirects validation
 
     results = []
 

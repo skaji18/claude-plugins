@@ -140,3 +140,16 @@ pipe_deny_right:
 allowed_dirs_extra: []
 audit_log_path: "~/.claude/permission-guard-audit.jsonl"
 file_access_outside_project: "ask"
+
+# Phase policy: override the decision for each dangerous_node phase.
+# Keys correspond to the part after the colon in dangerous_node IDs
+# (e.g., "P4:var_expansion" → key is "var_expansion").
+# Valid values: "deny", "ask", "allow"
+# Default values below match the original hardcoded behavior.
+phase_policy:
+  background_execution: "ask"
+  backtick_substitution: "ask"
+  cmd_substitution: "ask"
+  var_expansion: "ask"
+  env_assignment: "ask"
+  glob_chars: "ask"

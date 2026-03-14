@@ -92,6 +92,22 @@ def run_test(desc: str, command: str, expect: str, env_overrides: dict = None):
             FAIL += 1
 
 
+def run_test_exact(desc: str, command: str, expect: str, env_overrides: dict = None):
+    """Test with exact decision matching (allow/ask/deny)."""
+    global PASS, FAIL
+    input_str = _make_input(command)
+    output = _run_hook(input_str, env_overrides)
+    decision = _get_decision(output)
+
+    if decision == expect:
+        print(f"  ok   {desc} -> {decision}")
+        PASS += 1
+    else:
+        reason = _get_reason(output)
+        print(f"  FAIL {desc} (expected {expect}, got {decision}: {reason})")
+        FAIL += 1
+
+
 def _make_file_input(tool_name: str, tool_input: dict) -> str:
     """Build hook input JSON for file access guard."""
     return json.dumps({
@@ -516,6 +532,89 @@ def test_file_guard():
         os.remove(global_config_path())
 
 
+def test_phase_policy():
+    section("Phase Policy Configuration")
+
+    temp_project = tempfile.mkdtemp()
+    project_config = os.path.join(temp_project, ".claude", "permission-guard.yaml")
+
+    try:
+        # --- 1. Default behavior (no config overrides, all phases default to ask) ---
+        run_test_exact("default: echo $PATH -> ask", "echo $PATH", "ask")
+        run_test_exact("default: FOO=bar ls -> ask", "FOO=bar ls", "ask")
+        run_test_exact("default: ls *.py -> ask", "ls *.py", "ask")
+
+        # --- 2. Override var_expansion to deny ---
+        write_yaml(global_config_path(),
+            "phase_policy:\n  var_expansion: \"deny\"\n")
+        run_test_exact("override var_expansion=deny: echo $PATH -> deny",
+            "echo $PATH", "deny")
+
+        # --- 3. Override glob_chars to allow ---
+        write_yaml(global_config_path(),
+            "phase_policy:\n  glob_chars: \"allow\"\n")
+        run_test_exact("override glob_chars=allow: ls *.py -> allow",
+            "ls *.py", "allow")
+
+        # --- 4. Override env_assignment to allow ---
+        write_yaml(global_config_path(),
+            "phase_policy:\n  env_assignment: \"allow\"\n")
+        run_test_exact("override env_assignment=allow: PYTHONPATH=x ls -> allow",
+            "PYTHONPATH=x ls", "allow")
+
+        # --- 5. Override background_execution to ask ---
+        write_yaml(global_config_path(),
+            "phase_policy:\n  background_execution: \"ask\"\n")
+        run_test_exact("override background_execution=ask: ls & -> ask",
+            "ls &", "ask")
+
+        # --- 6. Project overrides global phase_policy ---
+        write_yaml(global_config_path(),
+            "phase_policy:\n  var_expansion: \"deny\"\n")
+        write_yaml(project_config,
+            "phase_policy:\n  var_expansion: \"ask\"\n")
+        env = {"CLAUDE_PROJECT_DIR": temp_project}
+        run_test_exact("project overrides global: echo $PATH -> ask",
+            "echo $PATH", "ask", env)
+
+        # --- 7. Multiple dangerous_nodes: most restrictive wins ---
+        # echo $HOME *.txt triggers both P4:var_expansion and P7:glob_chars.
+        # var_expansion=allow, glob_chars=ask → most restrictive is "ask"
+        write_yaml(global_config_path(),
+            "phase_policy:\n  var_expansion: \"allow\"\n  glob_chars: \"ask\"\n")
+        if os.path.exists(project_config):
+            os.remove(project_config)
+        run_test_exact("most restrictive wins: var=allow + glob=ask -> ask",
+            "echo $HOME *.txt", "ask")
+        # var_expansion=allow, glob_chars=deny → most restrictive is "deny"
+        write_yaml(global_config_path(),
+            "phase_policy:\n  var_expansion: \"allow\"\n  glob_chars: \"deny\"\n")
+        run_test_exact("most restrictive wins: var=allow + glob=deny -> deny",
+            "echo $HOME *.txt", "deny")
+        # Both allow → falls through to tools validation → allow (echo is allowed)
+        write_yaml(global_config_path(),
+            "phase_policy:\n  var_expansion: \"allow\"\n  glob_chars: \"allow\"\n")
+        run_test_exact("both allow: var=allow + glob=allow -> allow",
+            "echo $HOME *.txt", "allow")
+
+        # --- 8. No phase_policy in config -> identical to current defaults ---
+        # Clean up all configs -> fall back to defaults.yaml which has
+        # the default phase_policy section
+        if os.path.exists(global_config_path()):
+            os.remove(global_config_path())
+        if os.path.exists(project_config):
+            os.remove(project_config)
+        # With defaults: all phases default to ask
+        run_test_exact("no override: echo $PATH -> ask (default)", "echo $PATH", "ask")
+        run_test_exact("no override: FOO=bar ls -> ask (default)", "FOO=bar ls", "ask")
+        run_test_exact("no override: ls *.py -> ask (default)", "ls *.py", "ask")
+
+    finally:
+        shutil.rmtree(temp_project, ignore_errors=True)
+        if os.path.exists(global_config_path()):
+            os.remove(global_config_path())
+
+
 # ============================================================
 # Main
 # ============================================================
@@ -542,6 +641,7 @@ def main():
         test_compound_commands()
         test_3tier_config()
         test_file_guard()
+        test_phase_policy()
     finally:
         shutil.rmtree(TEST_HOME, ignore_errors=True)
 
