@@ -464,29 +464,13 @@ def test_file_guard():
         "Read", {"file_path": test_file}, "allow")
     shutil.rmtree(temp_allowed, ignore_errors=True)
 
-    # file_access_outside_project: deny mode
-    write_yaml(global_config_path(),
-        "file_access_outside_project: \"deny\"\n")
-    run_file_test("Read outside with deny policy",
-        "Read", {"file_path": "/etc/passwd"}, "deny")
-    run_file_test("Write outside with deny policy",
-        "Write", {"file_path": "/tmp/evil.txt", "content": "bad"}, "deny")
-
-    # project config overrides global
-    temp_project = tempfile.mkdtemp()
-    project_config = os.path.join(temp_project, ".claude", "gavel.yaml")
-    write_yaml(global_config_path(),
-        "file_access_outside_project: \"deny\"\n")
-    write_yaml(project_config,
-        "file_access_outside_project: \"ask\"\n")
-    env = {"CLAUDE_PROJECT_DIR": temp_project}
-    run_file_test("project overrides global deny -> ask",
-        "Read", {"file_path": "/etc/passwd"}, "ask", env)
-    shutil.rmtree(temp_project, ignore_errors=True)
-
-    # cleanup
+    # Outside project with no allowed_dirs_extra -> ask
     if os.path.exists(global_config_path()):
         os.remove(global_config_path())
+    run_file_test("Read outside (no extra dirs)",
+        "Read", {"file_path": "/etc/passwd"}, "ask")
+    run_file_test("Write outside (no extra dirs)",
+        "Write", {"file_path": "/tmp/evil.txt", "content": "bad"}, "ask")
 
 
 def test_phase_policy():

@@ -2,7 +2,7 @@
 gavel.file_guard -- file access guard hook for Read/Write/Edit/Glob/Grep.
 
 Checks that file_path (or path) stays within PROJECT_DIR or allowed_dirs_extra.
-Outside paths defer to config: file_access_outside_project (default: "ask").
+Outside paths always produce "ask".
 """
 
 import sys
@@ -62,8 +62,4 @@ def main():
     if contained:
         _output("allow", f"file_guard:{tool_name}:project_contained")
     else:
-        outside_policy = config.get("file_access_outside_project", "ask")
-        if outside_policy == "deny":
-            _output("deny", f"file_guard:{tool_name}:outside_project:{resolved}")
-        else:
-            _output("ask", f"file_guard:{tool_name}:outside_project:{resolved}")
+        _output("ask", f"file_guard:{tool_name}:outside_project:{resolved}")

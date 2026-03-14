@@ -50,7 +50,7 @@ Read/Write/Edit/Glob/Grep tool calls are checked for path containment:
 file_path → realpath() resolve
   ├─ Within PROJECT_DIR → allow
   ├─ Within allowed_dirs_extra → allow
-  └─ Otherwise → file_access_outside_project (default: "ask")
+  └─ Otherwise → ask
 ```
 
 ## Configuration
@@ -72,7 +72,6 @@ file_path → realpath() resolve
 | `pipe_deny_right_add` | list | Add to pipe deny list |
 | `allowed_dirs_extra` | list | Additional allowed directories (shared by Bash and file access) |
 | `audit_log_path` | string | Override audit log path |
-| `file_access_outside_project` | string | Decision for file access outside project: `"ask"` or `"deny"` |
 | `phase_policy` | map | Per-phase AST validation decisions (see table above) |
 
 ### Example
@@ -82,7 +81,6 @@ tools_add:
   bun: "allow"
 allowed_dirs_extra:
   - "/Users/me/shared-libs"
-file_access_outside_project: "ask"
 phase_policy:
   glob_chars: "allow"
   var_expansion: "ask"
