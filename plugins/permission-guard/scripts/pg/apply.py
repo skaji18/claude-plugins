@@ -7,6 +7,8 @@ import sys
 
 import yaml
 
+from pg.config import normalize_tools_add
+
 
 def main():
     parser = argparse.ArgumentParser(description="Apply optimization proposals to permission-guard config")
@@ -42,13 +44,7 @@ def main():
         config = {}
 
     # Ensure tools_add exists as dict
-    tools_add = config.get("tools_add", {})
-    if isinstance(tools_add, list):
-        flat = {}
-        for item in tools_add:
-            if isinstance(item, dict):
-                flat.update(item)
-        tools_add = flat
+    tools_add = normalize_tools_add(config.get("tools_add", {}))
 
     # Merge proposals (don't overwrite existing entries)
     added = []

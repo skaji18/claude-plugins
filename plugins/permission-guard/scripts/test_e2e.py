@@ -67,94 +67,55 @@ def _get_reason(output: dict) -> str:
     return output.get("hookSpecificOutput", {}).get("permissionDecisionReason", "")
 
 
-def run_test(desc: str, command: str, expect: str, env_overrides: dict = None):
+def _check_result(desc, output, expect, show_decision=False):
+    """Common assertion logic for all test runners.
+
+    expect="allow" requires exact match.
+    expect="dialog" accepts any non-allow (ask or deny).
+    Other values (ask, deny) require exact match.
+    """
+    global PASS, FAIL
+    decision = _get_decision(output)
+
+    if expect == "dialog":
+        ok = decision != "allow"
+    else:
+        ok = decision == expect
+
+    suffix = f" -> {decision}" if show_decision else ""
+    if ok:
+        print(f"  ok   {desc}{suffix}")
+        PASS += 1
+    else:
+        reason = _get_reason(output)
+        expected_label = "non-allow" if expect == "dialog" else expect
+        print(f"  FAIL {desc} (expected {expected_label}, got {decision}: {reason})")
+        FAIL += 1
+
+
+def run_test(desc, command, expect, env_overrides=None):
     """Test with auto-generated JSON input."""
-    global PASS, FAIL
-    input_str = _make_input(command)
-    output = _run_hook(input_str, env_overrides)
-    decision = _get_decision(output)
-
-    if expect == "allow":
-        if decision == "allow":
-            print(f"  ok   {desc}")
-            PASS += 1
-        else:
-            reason = _get_reason(output)
-            print(f"  FAIL {desc} (expected allow, got {decision}: {reason})")
-            FAIL += 1
-    else:
-        if decision != "allow":
-            print(f"  ok   {desc}")
-            PASS += 1
-        else:
-            reason = _get_reason(output)
-            print(f"  FAIL {desc} (expected non-allow, got allow: {reason})")
-            FAIL += 1
+    output = _run_hook(_make_input(command), env_overrides)
+    _check_result(desc, output, expect)
 
 
-def run_test_exact(desc: str, command: str, expect: str, env_overrides: dict = None):
+def run_test_exact(desc, command, expect, env_overrides=None):
     """Test with exact decision matching (allow/ask/deny)."""
-    global PASS, FAIL
-    input_str = _make_input(command)
-    output = _run_hook(input_str, env_overrides)
-    decision = _get_decision(output)
-
-    if decision == expect:
-        print(f"  ok   {desc} -> {decision}")
-        PASS += 1
-    else:
-        reason = _get_reason(output)
-        print(f"  FAIL {desc} (expected {expect}, got {decision}: {reason})")
-        FAIL += 1
+    output = _run_hook(_make_input(command), env_overrides)
+    _check_result(desc, output, expect, show_decision=True)
 
 
-def _make_file_input(tool_name: str, tool_input: dict) -> str:
-    """Build hook input JSON for file access guard."""
-    return json.dumps({
-        "tool_name": tool_name,
-        "tool_input": tool_input,
-    })
-
-
-def run_file_test(desc: str, tool_name: str, tool_input: dict, expect: str,
-                  env_overrides: dict = None):
-    """Test file access guard with expected decision."""
-    global PASS, FAIL
-    input_str = _make_file_input(tool_name, tool_input)
-    output = _run_hook(input_str, env_overrides, cmd=FILE_HOOK_CMD)
-    decision = _get_decision(output)
-
-    if expect == decision or (expect != "allow" and decision != "allow"):
-        print(f"  ok   {desc} -> {decision}")
-        PASS += 1
-    else:
-        reason = _get_reason(output)
-        print(f"  FAIL {desc} (expected {expect}, got {decision}: {reason})")
-        FAIL += 1
-
-
-def run_test_raw(desc: str, raw_json: str, expect: str, env_overrides: dict = None):
+def run_test_raw(desc, raw_json, expect, env_overrides=None):
     """Test with pre-formed JSON input."""
-    global PASS, FAIL
     output = _run_hook(raw_json, env_overrides)
-    decision = _get_decision(output)
+    _check_result(desc, output, expect)
 
-    if expect == "allow":
-        if decision == "allow":
-            print(f"  ok   {desc}")
-            PASS += 1
-        else:
-            reason = _get_reason(output)
-            print(f"  FAIL {desc} (expected allow, got {decision}: {reason})")
-            FAIL += 1
-    else:
-        if decision != "allow":
-            print(f"  ok   {desc}")
-            PASS += 1
-        else:
-            reason = _get_reason(output)
-            print(f"  FAIL {desc} (expected non-allow, got allow: {reason})")
-            FAIL += 1
+
+def run_file_test(desc, tool_name, tool_input, expect, env_overrides=None):
+    """Test file access guard with expected decision."""
+    input_str = json.dumps({"tool_name": tool_name, "tool_input": tool_input})
+    output = _run_hook(input_str, env_overrides, cmd=FILE_HOOK_CMD)
+    _check_result(desc, output, expect, show_decision=True)
 
 
 def section(title: str):

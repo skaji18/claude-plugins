@@ -56,6 +56,22 @@ def load_project_config():
     return dict()
 
 
+def normalize_tools_add(raw):
+    """Normalize tools_add from either dict or list-of-dicts format to a flat dict.
+
+    YAML allows both formats:
+      tools_add: {bun: "allow"}        # dict format
+      tools_add: [{bun: "allow"}]      # list-of-dicts format
+    """
+    if isinstance(raw, list):
+        flat = dict()
+        for item in raw:
+            if isinstance(item, dict):
+                flat.update(item)
+        return flat
+    return raw if isinstance(raw, dict) else dict()
+
+
 def merge_config(base, delta):
     """Merge base config + delta additions - delta removals.
 
@@ -68,14 +84,7 @@ def merge_config(base, delta):
     """
     effective_tools = dict(base.get("tools", dict()))
 
-    # tools_add (handle both dict and list-of-dicts format)
-    tools_add = delta.get("tools_add", dict())
-    if isinstance(tools_add, list):
-        flat = dict()
-        for item in tools_add:
-            if isinstance(item, dict):
-                flat.update(item)
-        tools_add = flat
+    tools_add = normalize_tools_add(delta.get("tools_add", dict()))
     for name, val in tools_add.items():
         if isinstance(val, str):
             effective_tools[name] = val

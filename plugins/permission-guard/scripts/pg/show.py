@@ -9,18 +9,10 @@ Source tags:
 import os
 import sys
 
-from pg.config import load_defaults, load_global_config, load_project_config, merge_config, get_audit_log_path
-
-
-def normalize_tools_add(cfg):
-    ta = cfg.get("tools_add", {})
-    if isinstance(ta, list):
-        flat = {}
-        for item in ta:
-            if isinstance(item, dict):
-                flat.update(item)
-        return flat
-    return ta
+from pg.config import (
+    load_defaults, load_global_config, load_project_config,
+    merge_config, get_audit_log_path, normalize_tools_add,
+)
 
 
 def main():
@@ -32,9 +24,9 @@ def main():
     effective = merge_config(intermediate, project_cfg)
 
     default_tools = defaults.get("tools", {})
-    global_adds = normalize_tools_add(global_cfg)
+    global_adds = normalize_tools_add(global_cfg.get("tools_add", {}))
     global_removes = set(global_cfg.get("tools_remove", []))
-    project_adds = normalize_tools_add(project_cfg)
+    project_adds = normalize_tools_add(project_cfg.get("tools_add", {}))
     project_removes = set(project_cfg.get("tools_remove", []))
 
     # --- Config sources ---

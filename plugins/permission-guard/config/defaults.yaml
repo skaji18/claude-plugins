@@ -1,5 +1,5 @@
 tools:
-  # 単純エントリ (allow)
+  # Simple entries (allow)
   cd: "allow"
   mkdir: "allow"
   touch: "allow"
@@ -53,7 +53,7 @@ tools:
   comm: "allow"
   paste: "allow"
 
-  # 単純エントリ (ask)
+  # Simple entries (ask)
   curl: "ask"
   wget: "ask"
   ssh: "ask"
@@ -72,7 +72,7 @@ tools:
   pip: "ask"
   pip3: "ask"
 
-  # 複雑エントリ (マップ)
+  # Rule entries (map)
   git:
     ask: ["push", "clean", "filter-branch", "rebase", "reset"]
     dangerous_flags: ["--force", "-f", "--hard", "-D", "--no-verify"]
@@ -85,30 +85,30 @@ tools:
 
   gh:
     allow:
-      # PR (参照)
+      # PR (read-only)
       - "pr view"
       - "pr list"
       - "pr status"
       - "pr diff"
       - "pr checks"
       - "pr checkout"
-      # Issue (参照)
+      # Issue (read-only)
       - "issue view"
       - "issue list"
       - "issue status"
-      # Repo (参照)
+      # Repo (read-only)
       - "repo view"
       - "repo list"
       - "repo clone"
-      # Release (参照)
+      # Release (read-only)
       - "release view"
       - "release list"
-      # Actions (参照)
+      # Actions (read-only)
       - "run view"
       - "run list"
       - "workflow view"
       - "workflow list"
-      # その他 (参照)
+      # Other (read-only)
       - "api"
       - "search"
       - "status"

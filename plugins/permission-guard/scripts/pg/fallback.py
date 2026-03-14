@@ -1,5 +1,5 @@
 """
-pg.fallback -- PermissionRequest fallback hook (Python reimplementation)
+pg.fallback -- Bash command permission hook.
 
 Automatically approves PROJECT_DIR-scoped execution (+ allowed_dirs_extra) with validation.
 Uses tree-sitter-bash for proper shell AST parsing.
@@ -9,7 +9,6 @@ import sys
 import json
 import re
 import os
-from typing import Tuple
 
 from pg.config import load_config, get_audit_log_path
 from pg.parser import parse_command, ParseResult
@@ -24,7 +23,6 @@ class RejectException(Exception):
 # --- Configuration ---
 PROJECT_DIR = detect_project_dir()
 DEBUG = os.getenv("PERMISSION_DEBUG", "0") == "1"
-_current_command = ""  # global init
 
 
 def reject(reason="unknown"):
@@ -162,7 +160,7 @@ def validate_single_command_words(words, config):
     return (default_action, f"tools_default:{cmd_basename}")
 
 
-def validate_parsed_result(parsed: ParseResult, config) -> Tuple[str, str]:
+def validate_parsed_result(parsed, config):
     """Validate a parsed command result against config.
 
     Checks:
@@ -172,7 +170,7 @@ def validate_parsed_result(parsed: ParseResult, config) -> Tuple[str, str]:
     4. Redirect paths for project containment
     """
     # 1. Dangerous nodes from AST (variable expansion, cmd substitution, etc.)
-    #    Decision is driven by phase_policy config (defaults: env_assignment=ask, rest=deny).
+    #    Decision is driven by phase_policy config (defaults: all=ask).
     #    Evaluate ALL nodes; most restrictive policy wins (deny > ask > allow).
     phase_policy = config.get("phase_policy", {})
     if parsed.dangerous_nodes:
@@ -239,24 +237,19 @@ def validate_parsed_result(parsed: ParseResult, config) -> Tuple[str, str]:
 
 # --- Audit & Output ---
 
-def _get_audit_log_path():
-    """Get audit log path from config or default."""
-    return get_audit_log_path()
-
-
-def _write_audit_log(decision, reason):
+def _write_audit_log(decision, reason, command=""):
     """Write a single JSONL line to the audit log."""
     if os.environ.get("PG_NO_AUDIT") == "1":
         return
     try:
-        audit_path = _get_audit_log_path()
+        audit_path = get_audit_log_path()
         if not audit_path:
             return
         import datetime
         log_entry = json.dumps({
             "ts": datetime.datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ"),
             "decision": decision,
-            "command": _current_command,
+            "command": command,
             "phase": reason.split(":")[0] if ":" in reason else reason,
             "reason": reason
         })
@@ -267,43 +260,15 @@ def _write_audit_log(decision, reason):
         pass
 
 
-def output_allow(reason="allowed"):
-    """Output allow decision with reason and exit."""
-    _write_audit_log("allow", reason)
+def _output(decision, reason, command=""):
+    """Output hook decision JSON, write audit log, and exit."""
+    if DEBUG and decision != "allow":
+        print(f"{decision.upper()}[{reason}]", file=sys.stderr)
+    _write_audit_log(decision, reason, command)
     print(json.dumps({
         "hookSpecificOutput": {
             "hookEventName": "PreToolUse",
-            "permissionDecision": "allow",
-            "permissionDecisionReason": reason
-        }
-    }))
-    sys.exit(0)
-
-
-def output_ask(reason="unknown"):
-    """Output ask decision (show dialog with reason) and exit."""
-    if DEBUG:
-        print(f"ASK[{reason}]", file=sys.stderr)
-    _write_audit_log("ask", reason)
-    print(json.dumps({
-        "hookSpecificOutput": {
-            "hookEventName": "PreToolUse",
-            "permissionDecision": "ask",
-            "permissionDecisionReason": reason
-        }
-    }))
-    sys.exit(0)
-
-
-def output_deny(reason="unknown"):
-    """Output deny decision (hard block) and exit."""
-    if DEBUG:
-        print(f"DENY[{reason}]", file=sys.stderr)
-    _write_audit_log("deny", reason)
-    print(json.dumps({
-        "hookSpecificOutput": {
-            "hookEventName": "PreToolUse",
-            "permissionDecision": "deny",
+            "permissionDecision": decision,
             "permissionDecisionReason": reason
         }
     }))
@@ -312,29 +277,27 @@ def output_deny(reason="unknown"):
 
 def main():
     """Main entry point."""
-    global _current_command
     input_str = sys.stdin.read()
     try:
         config = load_config()
     except RejectException as e:
-        output_deny(e.reason)
+        _output("deny", e.reason)
         return
 
     try:
         input_data = json.loads(input_str)
     except json.JSONDecodeError:
-        output_deny("json_parse_error")
+        _output("deny", "json_parse_error")
         return
 
     command = input_data.get("tool_input", {}).get("command", "")
-    _current_command = command
 
     # Pre-parse validation (before tree-sitter)
     try:
         phase_s0_null_byte_check(input_str, command)
         phase_1_sanitize(input_data, command)
     except RejectException as e:
-        output_deny(e.reason)
+        _output("deny", e.reason, command)
         return
 
     # Strip bash line continuations (backslash + newline -> join lines)
@@ -344,19 +307,12 @@ def main():
     parsed = parse_command(command)
 
     if parsed is None:
-        # Parser could not parse → ask for safety
-        output_ask("parse_failure")
+        _output("ask", "parse_failure", command)
         return
 
     # Validate parsed result against config
     decision, reason = validate_parsed_result(parsed, config)
-
-    if decision == "allow":
-        output_allow(reason)
-    elif decision == "deny":
-        output_deny(reason)
-    else:
-        output_ask(reason)
+    _output(decision, reason, command)
 
 
 if __name__ == "__main__":
