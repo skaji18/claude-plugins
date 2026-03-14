@@ -1,5 +1,5 @@
 """
-pg.config -- 3-layer configuration loader for gavel
+gavel.config -- 3-layer configuration loader
 
 Layer order (later overrides earlier):
   1. defaults: config/defaults.yaml (plugin built-in)
@@ -19,7 +19,7 @@ def load_defaults():
     """Load plugin defaults.yaml."""
     plugin_root = os.environ.get("CLAUDE_PLUGIN_ROOT", "")
     if not plugin_root:
-        # pg/ package is at scripts/pg/, so plugin root is two levels up
+        # gavel/ package is at scripts/gavel/, so plugin root is two levels up
         plugin_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
     defaults_path = os.path.join(plugin_root, "config", "defaults.yaml")
     if os.path.exists(defaults_path):

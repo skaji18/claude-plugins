@@ -1,5 +1,5 @@
 """
-pg.fallback -- Bash command validation hook.
+gavel.fallback -- Bash command validation hook.
 
 Automatically approves PROJECT_DIR-scoped execution (+ allowed_dirs_extra) with validation.
 Uses tree-sitter-bash for proper shell AST parsing.
@@ -10,9 +10,9 @@ import json
 import re
 import os
 
-from pg.config import load_config, get_audit_log_path
-from pg.parser import parse_command, ParseResult
-from pg.path_check import detect_project_dir, canonicalize_path, is_path_within
+from gavel.config import load_config, get_audit_log_path
+from gavel.parser import parse_command, ParseResult
+from gavel.path_check import detect_project_dir, canonicalize_path, is_path_within
 
 
 class RejectException(Exception):
@@ -22,7 +22,7 @@ class RejectException(Exception):
 
 # --- Configuration ---
 PROJECT_DIR = detect_project_dir()
-DEBUG = os.getenv("PERMISSION_DEBUG", "0") == "1"
+DEBUG = os.getenv("GAVEL_DEBUG", "0") == "1"
 
 
 def reject(reason="unknown"):
@@ -239,7 +239,7 @@ def validate_parsed_result(parsed, config):
 
 def _write_audit_log(decision, reason, command=""):
     """Write a single JSONL line to the audit log."""
-    if os.environ.get("PG_NO_AUDIT") == "1":
+    if os.environ.get("GAVEL_NO_AUDIT") == "1":
         return
     try:
         audit_path = get_audit_log_path()

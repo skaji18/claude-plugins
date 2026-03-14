@@ -11,8 +11,8 @@ from pathlib import Path
 SCRIPT_DIR = Path(__file__).resolve().parent
 PLUGIN_ROOT = SCRIPT_DIR.parent
 PYTHON = str(PLUGIN_ROOT / ".venv" / "bin" / "python3")
-HOOK_CMD = [PYTHON, "-m", "pg", "hook"]
-FILE_HOOK_CMD = [PYTHON, "-m", "pg", "file-hook"]
+HOOK_CMD = [PYTHON, "-m", "gavel", "hook"]
+FILE_HOOK_CMD = [PYTHON, "-m", "gavel", "file-hook"]
 
 # Isolated HOME to prevent real config interference
 TEST_HOME = tempfile.mkdtemp()
@@ -35,7 +35,7 @@ def _run_hook(input_str: str, env_overrides: dict = None, cmd=None) -> dict:
     """Run the hook subprocess and return parsed output."""
     env = os.environ.copy()
     env["HOME"] = TEST_HOME
-    env["PG_NO_AUDIT"] = "1"
+    env["GAVEL_NO_AUDIT"] = "1"
     env["PYTHONPATH"] = str(SCRIPT_DIR)
     env["CLAUDE_PLUGIN_ROOT"] = str(PLUGIN_ROOT)
     env.setdefault("CLAUDE_PROJECT_DIR", ORIG_CWD)
@@ -402,7 +402,7 @@ def test_file_guard():
 
     # Write within project -> allow
     run_file_test("Write project file",
-        "Write", {"file_path": os.path.join(ORIG_CWD, "scripts/pg/test.py"), "content": "x"}, "allow")
+        "Write", {"file_path": os.path.join(ORIG_CWD, "scripts/gavel/test.py"), "content": "x"}, "allow")
 
     # Write outside project -> ask
     run_file_test("Write /tmp/evil.txt",
@@ -581,7 +581,7 @@ def main():
         print(f"ERROR: {PYTHON} not found. Run setup.sh first.")
         sys.exit(1)
 
-    print("=== Gavel E2E Tests ===")
+    print("=== gavel E2E Tests ===")
 
     try:
         test_baseline()

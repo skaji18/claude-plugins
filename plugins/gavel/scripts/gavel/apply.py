@@ -1,4 +1,4 @@
-"""pg.apply -- Merge proposed tools_add entries into a gavel config file."""
+"""gavel.apply -- Merge proposed tools_add entries into a config file."""
 
 import argparse
 import json
@@ -7,7 +7,7 @@ import sys
 
 import yaml
 
-from pg.config import normalize_tools_add
+from gavel.config import normalize_tools_add
 
 
 def main():

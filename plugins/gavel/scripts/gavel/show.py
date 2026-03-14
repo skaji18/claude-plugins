@@ -1,4 +1,4 @@
-"""pg.show -- Display effective gavel config with 3-tier source attribution.
+"""gavel.show -- Display effective config with 3-tier source attribution.
 
 Source tags:
   [D] = defaults (plugin built-in)
@@ -9,7 +9,7 @@ Source tags:
 import os
 import sys
 
-from pg.config import (
+from gavel.config import (
     load_defaults, load_global_config, load_project_config,
     merge_config, get_audit_log_path, normalize_tools_add,
 )
@@ -32,7 +32,7 @@ def main():
     # --- Config sources ---
     plugin_root = os.environ.get("CLAUDE_PLUGIN_ROOT", "")
     if not plugin_root:
-        # pg/ package is at scripts/pg/, so plugin root is two levels up
+        # gavel/ package is at scripts/gavel/, so plugin root is two levels up
         plugin_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
     defaults_path = os.path.join(plugin_root, "config", "defaults.yaml")
     home = os.path.expanduser("~")

@@ -1,5 +1,5 @@
 """
-pg.file_guard -- file access guard hook for Read/Write/Edit/Glob/Grep.
+gavel.file_guard -- file access guard hook for Read/Write/Edit/Glob/Grep.
 
 Checks that file_path (or path) stays within PROJECT_DIR or allowed_dirs_extra.
 Outside paths defer to config: file_access_outside_project (default: "ask").
@@ -8,8 +8,8 @@ Outside paths defer to config: file_access_outside_project (default: "ask").
 import sys
 import json
 
-from pg.config import load_config
-from pg.path_check import detect_project_dir, check_path_containment
+from gavel.config import load_config
+from gavel.path_check import detect_project_dir, check_path_containment
 
 
 def _output(decision, reason):

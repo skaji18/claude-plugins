@@ -1,5 +1,5 @@
 """
-pg.parser -- tree-sitter-bash based shell command parser for gavel.
+gavel.parser -- tree-sitter-bash based shell command parser.
 
 Uses tree-sitter-bash for proper AST analysis including heredocs,
 quoted strings, and special variables.

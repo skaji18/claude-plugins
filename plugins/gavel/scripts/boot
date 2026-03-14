@@ -6,4 +6,4 @@ if [ ! -f "$VENV" ]; then
   echo '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"ask","permissionDecisionReason":"gavel: venv not found. Run /gavel:setup"}}'
   exit 0
 fi
-PYTHONPATH="${CLAUDE_PLUGIN_ROOT}/scripts" exec "$VENV" -m pg hook
+PYTHONPATH="${CLAUDE_PLUGIN_ROOT}/scripts" exec "$VENV" -m gavel hook

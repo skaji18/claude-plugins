@@ -1,11 +1,11 @@
-"""pg.analyze -- Parse gavel audit log and identify optimization candidates."""
+"""gavel.analyze -- Parse audit log and identify optimization candidates."""
 
 import json
 import os
 import sys
 from collections import Counter
 
-from pg.config import get_all_audit_log_paths
+from gavel.config import get_all_audit_log_paths
 
 MIN_ENTRIES = 10
 MIN_ASK_COUNT = 5
@@ -131,7 +131,7 @@ def main():
     if fmt == "json":
         print(json.dumps(result, indent=2))
     else:
-        print(f"Permission log analysis")
+        print(f"Gavel audit log analysis")
         for s in sources:
             print(f"  source: {s}")
         print(f"Period: {result['period']['from']} -> {result['period']['to']}  ({result['total']} decisions)")

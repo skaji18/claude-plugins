@@ -1,10 +1,10 @@
-"""pg.__main__ -- CLI entry point for gavel package.
+"""gavel.__main__ -- CLI entry point.
 
 Usage:
-    python -m pg hook      Run the Bash validation hook (reads stdin)
-    python -m pg show      Display effective config
-    python -m pg analyze   Analyze audit log
-    python -m pg apply     Apply optimization proposals
+    python -m gavel hook      Run the Bash validation hook (reads stdin)
+    python -m gavel show      Display effective config
+    python -m gavel analyze   Analyze audit log
+    python -m gavel apply     Apply optimization proposals
 """
 
 import sys
@@ -12,7 +12,7 @@ import sys
 
 def main():
     if len(sys.argv) < 2:
-        print("Usage: python -m pg <command>", file=sys.stderr)
+        print("Usage: python -m gavel <command>", file=sys.stderr)
         print("Commands: hook, file-hook, show, analyze, apply", file=sys.stderr)
         sys.exit(1)
 
@@ -21,19 +21,19 @@ def main():
     sys.argv = [sys.argv[0]] + sys.argv[2:]
 
     if command == "hook":
-        from pg.fallback import main as hook_main
+        from gavel.fallback import main as hook_main
         hook_main()
     elif command == "file-hook":
-        from pg.file_guard import main as file_hook_main
+        from gavel.file_guard import main as file_hook_main
         file_hook_main()
     elif command == "show":
-        from pg.show import main as show_main
+        from gavel.show import main as show_main
         show_main()
     elif command == "analyze":
-        from pg.analyze import main as analyze_main
+        from gavel.analyze import main as analyze_main
         analyze_main()
     elif command == "apply":
-        from pg.apply import main as apply_main
+        from gavel.apply import main as apply_main
         apply_main()
     else:
         print(f"Unknown command: {command}", file=sys.stderr)

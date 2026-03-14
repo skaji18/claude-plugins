@@ -5,7 +5,7 @@ description: Analyze gavel decision log and suggest config optimizations
 **Step 1: Run analysis script**
 
 ```bash
-PYTHONPATH="${CLAUDE_PLUGIN_ROOT}/scripts" "${CLAUDE_PLUGIN_ROOT}/.venv/bin/python3" -m pg analyze --format=json
+PYTHONPATH="${CLAUDE_PLUGIN_ROOT}/scripts" "${CLAUDE_PLUGIN_ROOT}/.venv/bin/python3" -m gavel analyze --format=json
 ```
 
 If the script exits with code 1, display the error message and stop.
@@ -25,7 +25,7 @@ For each candidate, ask: "Apply to [G]lobal (~/.claude/) or [P]roject (.claude/)
 For each non-skipped candidate, run:
 
 ```bash
-PYTHONPATH="${CLAUDE_PLUGIN_ROOT}/scripts" "${CLAUDE_PLUGIN_ROOT}/.venv/bin/python3" -m pg apply \
+PYTHONPATH="${CLAUDE_PLUGIN_ROOT}/scripts" "${CLAUDE_PLUGIN_ROOT}/.venv/bin/python3" -m gavel apply \
   --target <global|project> \
   --proposals '<json of selected proposals>'
 ```

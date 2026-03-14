@@ -1,5 +1,5 @@
 """
-pg.path_check -- shared path normalization and containment checking.
+gavel.path_check -- shared path normalization and containment checking.
 
 Used by both the Bash command hook (fallback.py) and the file access hook (file_guard.py).
 """
