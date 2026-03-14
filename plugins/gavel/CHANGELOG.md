@@ -1,5 +1,14 @@
 # Changelog
 
+## [3.0.0] - 2026-03-14
+
+### Breaking
+- **Config key renames** — `pipe_deny_right` → `no_pipe_to`, `phase_policy` → `shell_syntax_policy`, `allowed_dirs_extra` → `allow_paths_outside_project` (and corresponding `_add` suffixes). Existing config files must be updated.
+
+### Improved
+- **Setup templates** — enriched with concrete examples (simple/confirm/fine-grained tool patterns) and commented-out `shell_syntax_policy` section
+- **Project-local config gitignored** — `.claude/gavel.yaml` no longer tracked in repo
+
 ## [2.1.0] - 2026-03-14
 
 ### Added
