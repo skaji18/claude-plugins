@@ -1,5 +1,5 @@
 {
-  "description": "8-phase Bash command permission validation. Auto-approves safe commands, blocks dangerous patterns.",
+  "description": "8-phase Bash command permission validation + file access guard. Auto-approves safe commands, blocks dangerous patterns, guards file access paths.",
   "hooks": {
     "PreToolUse": [
       {
@@ -9,6 +9,16 @@
             "type": "command",
             "command": "bash ${CLAUDE_PLUGIN_ROOT}/scripts/boot",
             "timeout": 5
+          }
+        ]
+      },
+      {
+        "matcher": "Read|Write|Edit|Glob|Grep",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash ${CLAUDE_PLUGIN_ROOT}/scripts/boot-file",
+            "timeout": 3
           }
         ]
       }

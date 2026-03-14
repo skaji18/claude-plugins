@@ -13,6 +13,7 @@ from typing import Tuple
 
 from pg.config import load_config, get_audit_log_path
 from pg.parser import parse_command, ParseResult
+from pg.path_check import detect_project_dir, canonicalize_path, is_path_within
 
 
 class RejectException(Exception):
@@ -21,19 +22,7 @@ class RejectException(Exception):
 
 
 # --- Configuration ---
-def _detect_project_dir():
-    """Detect project directory. Works in both Plugin and inline modes."""
-    env_dir = os.environ.get("CLAUDE_PROJECT_DIR")
-    if env_dir:
-        return os.path.abspath(env_dir)
-
-    file_based = os.path.abspath(os.path.join(os.path.dirname(__file__), "../.."))
-    if os.path.isdir(os.path.join(file_based, ".claude")):
-        return file_based
-
-    return os.path.abspath(os.getcwd())
-
-PROJECT_DIR = _detect_project_dir()
+PROJECT_DIR = detect_project_dir()
 DEBUG = os.getenv("PERMISSION_DEBUG", "0") == "1"
 _current_command = ""  # global init
 
@@ -42,15 +31,7 @@ def reject(reason="unknown"):
     raise RejectException(reason)
 
 
-# --- Configuration ---
-
 NEVER_SAFE = {"sudo", "su"}
-
-
-def canonicalize_path(path):
-    """Portable path normalization with symlink resolution."""
-    resolved = os.path.realpath(path)
-    return resolved.replace(os.sep, '/')
 
 
 def phase_s0_null_byte_check(input_str, command):

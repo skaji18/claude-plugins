@@ -16,6 +16,7 @@ SCRIPT_DIR = Path(__file__).resolve().parent
 PLUGIN_ROOT = SCRIPT_DIR.parent
 PYTHON = str(PLUGIN_ROOT / ".venv" / "bin" / "python3")
 HOOK_CMD = [PYTHON, "-m", "pg", "hook"]
+FILE_HOOK_CMD = [PYTHON, "-m", "pg", "file-hook"]
 
 # Isolated HOME to prevent real config interference
 TEST_HOME = tempfile.mkdtemp()
@@ -34,7 +35,7 @@ def _make_input(command: str) -> str:
     })
 
 
-def _run_hook(input_str: str, env_overrides: dict = None) -> dict:
+def _run_hook(input_str: str, env_overrides: dict = None, cmd=None) -> dict:
     """Run the hook subprocess and return parsed output."""
     env = os.environ.copy()
     env["HOME"] = TEST_HOME
@@ -46,7 +47,7 @@ def _run_hook(input_str: str, env_overrides: dict = None) -> dict:
         env.update(env_overrides)
 
     result = subprocess.run(
-        HOOK_CMD,
+        cmd or HOOK_CMD,
         input=input_str,
         capture_output=True,
         text=True,
@@ -89,6 +90,31 @@ def run_test(desc: str, command: str, expect: str, env_overrides: dict = None):
             reason = _get_reason(output)
             print(f"  FAIL {desc} (expected non-allow, got allow: {reason})")
             FAIL += 1
+
+
+def _make_file_input(tool_name: str, tool_input: dict) -> str:
+    """Build hook input JSON for file access guard."""
+    return json.dumps({
+        "tool_name": tool_name,
+        "tool_input": tool_input,
+    })
+
+
+def run_file_test(desc: str, tool_name: str, tool_input: dict, expect: str,
+                  env_overrides: dict = None):
+    """Test file access guard with expected decision."""
+    global PASS, FAIL
+    input_str = _make_file_input(tool_name, tool_input)
+    output = _run_hook(input_str, env_overrides, cmd=FILE_HOOK_CMD)
+    decision = _get_decision(output)
+
+    if expect == decision or (expect != "allow" and decision != "allow"):
+        print(f"  ok   {desc} -> {decision}")
+        PASS += 1
+    else:
+        reason = _get_reason(output)
+        print(f"  FAIL {desc} (expected {expect}, got {decision}: {reason})")
+        FAIL += 1
 
 
 def run_test_raw(desc: str, raw_json: str, expect: str, env_overrides: dict = None):
@@ -390,6 +416,106 @@ def test_3tier_config():
             os.remove(global_config_path())
 
 
+def test_file_guard():
+    section("File Access Guard")
+
+    # Read within project -> allow
+    run_file_test("Read project file",
+        "Read", {"file_path": os.path.join(ORIG_CWD, "config/defaults.yaml")}, "allow")
+
+    # Read outside project -> ask
+    run_file_test("Read /etc/passwd",
+        "Read", {"file_path": "/etc/passwd"}, "ask")
+
+    # Write within project -> allow
+    run_file_test("Write project file",
+        "Write", {"file_path": os.path.join(ORIG_CWD, "scripts/pg/test.py"), "content": "x"}, "allow")
+
+    # Write outside project -> ask
+    run_file_test("Write /tmp/evil.txt",
+        "Write", {"file_path": "/tmp/evil.txt", "content": "bad"}, "ask")
+
+    # Edit within project -> allow
+    run_file_test("Edit project file",
+        "Edit", {"file_path": os.path.join(ORIG_CWD, "config/defaults.yaml"),
+                 "old_string": "a", "new_string": "b"}, "allow")
+
+    # Edit outside project -> ask
+    run_file_test("Edit /etc/hosts",
+        "Edit", {"file_path": "/etc/hosts", "old_string": "a", "new_string": "b"}, "ask")
+
+    # Glob with no path -> allow (default cwd)
+    run_file_test("Glob no path (default cwd)",
+        "Glob", {"pattern": "*.py"}, "allow")
+
+    # Glob within project -> allow
+    run_file_test("Glob project path",
+        "Glob", {"pattern": "*.py", "path": os.path.join(ORIG_CWD, "scripts")}, "allow")
+
+    # Glob outside project -> ask
+    run_file_test("Glob /etc",
+        "Glob", {"pattern": "*.conf", "path": "/etc"}, "ask")
+
+    # Grep with no path -> allow (default cwd)
+    run_file_test("Grep no path (default cwd)",
+        "Grep", {"pattern": "import"}, "allow")
+
+    # Grep within project -> allow
+    run_file_test("Grep project path",
+        "Grep", {"pattern": "import", "path": os.path.join(ORIG_CWD, "scripts")}, "allow")
+
+    # Grep outside project -> ask
+    run_file_test("Grep /etc",
+        "Grep", {"pattern": "root", "path": "/etc"}, "ask")
+
+    # Read with relative path -> allow (resolved against PROJECT_DIR)
+    run_file_test("Read relative path",
+        "Read", {"file_path": "config/defaults.yaml"}, "allow")
+
+    # Read with path traversal outside project -> ask
+    run_file_test("Read traversal ../../etc/passwd",
+        "Read", {"file_path": "../../etc/passwd"}, "ask")
+
+    # Empty file_path -> ask
+    run_file_test("Read empty path",
+        "Read", {"file_path": ""}, "ask")
+
+    # allowed_dirs_extra: read from allowed dir -> allow
+    temp_allowed = tempfile.mkdtemp()
+    test_file = os.path.join(temp_allowed, "test.txt")
+    with open(test_file, "w") as f:
+        f.write("test")
+    write_yaml(global_config_path(),
+        f"allowed_dirs_extra:\n  - \"{temp_allowed}\"\n")
+    run_file_test("Read allowed_dirs_extra",
+        "Read", {"file_path": test_file}, "allow")
+    shutil.rmtree(temp_allowed, ignore_errors=True)
+
+    # file_access_outside_project: deny mode
+    write_yaml(global_config_path(),
+        "file_access_outside_project: \"deny\"\n")
+    run_file_test("Read outside with deny policy",
+        "Read", {"file_path": "/etc/passwd"}, "deny")
+    run_file_test("Write outside with deny policy",
+        "Write", {"file_path": "/tmp/evil.txt", "content": "bad"}, "deny")
+
+    # project config overrides global
+    temp_project = tempfile.mkdtemp()
+    project_config = os.path.join(temp_project, ".claude", "permission-guard.yaml")
+    write_yaml(global_config_path(),
+        "file_access_outside_project: \"deny\"\n")
+    write_yaml(project_config,
+        "file_access_outside_project: \"ask\"\n")
+    env = {"CLAUDE_PROJECT_DIR": temp_project}
+    run_file_test("project overrides global deny -> ask",
+        "Read", {"file_path": "/etc/passwd"}, "ask", env)
+    shutil.rmtree(temp_project, ignore_errors=True)
+
+    # cleanup
+    if os.path.exists(global_config_path()):
+        os.remove(global_config_path())
+
+
 # ============================================================
 # Main
 # ============================================================
@@ -415,6 +541,7 @@ def main():
         test_project_contained_path()
         test_compound_commands()
         test_3tier_config()
+        test_file_guard()
     finally:
         shutil.rmtree(TEST_HOME, ignore_errors=True)
 

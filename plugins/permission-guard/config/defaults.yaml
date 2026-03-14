@@ -139,3 +139,4 @@ pipe_deny_right:
 
 allowed_dirs_extra: []
 audit_log_path: "~/.claude/permission-guard-audit.jsonl"
+file_access_outside_project: "ask"

@@ -110,6 +110,9 @@ def merge_config(base, delta):
     # audit_log_path: use delta only if non-empty
     delta_audit = delta.get("audit_log_path", "")
     result["audit_log_path"] = delta_audit if delta_audit else base.get("audit_log_path", "")
+    # file_access_outside_project: use delta only if non-empty
+    delta_fao = delta.get("file_access_outside_project", "")
+    result["file_access_outside_project"] = delta_fao if delta_fao else base.get("file_access_outside_project", "ask")
     return result
 
 

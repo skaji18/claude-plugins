@@ -13,7 +13,7 @@ import sys
 def main():
     if len(sys.argv) < 2:
         print("Usage: python -m pg <command>", file=sys.stderr)
-        print("Commands: hook, show, analyze, apply", file=sys.stderr)
+        print("Commands: hook, file-hook, show, analyze, apply", file=sys.stderr)
         sys.exit(1)
 
     command = sys.argv[1]
@@ -23,6 +23,9 @@ def main():
     if command == "hook":
         from pg.fallback import main as hook_main
         hook_main()
+    elif command == "file-hook":
+        from pg.file_guard import main as file_hook_main
+        file_hook_main()
     elif command == "show":
         from pg.show import main as show_main
         show_main()
@@ -34,7 +37,7 @@ def main():
         apply_main()
     else:
         print(f"Unknown command: {command}", file=sys.stderr)
-        print("Commands: hook, show, analyze, apply", file=sys.stderr)
+        print("Commands: hook, file-hook, show, analyze, apply", file=sys.stderr)
         sys.exit(1)
 
 
