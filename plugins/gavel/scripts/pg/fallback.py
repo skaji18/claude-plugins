@@ -1,5 +1,5 @@
 """
-pg.fallback -- Bash command permission hook.
+pg.fallback -- Bash command validation hook.
 
 Automatically approves PROJECT_DIR-scoped execution (+ allowed_dirs_extra) with validation.
 Uses tree-sitter-bash for proper shell AST parsing.

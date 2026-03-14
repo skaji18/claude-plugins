@@ -1,12 +1,12 @@
-# permission-guard
+# gavel
 
-Permission validation hook for [Claude Code](https://claude.com/claude-code). Guards Bash commands and file access (Read/Write/Edit/Glob/Grep) with configurable policies and path containment.
+Tool-use validation hook for [Claude Code](https://claude.com/claude-code). Guards Bash commands and file access (Read/Write/Edit/Glob/Grep) with configurable policies and path containment.
 
 ## Installation
 
 ```bash
-/plugin install permission-guard@skaji18-plugins
-/permission-guard:setup
+/plugin install gavel@skaji18-plugins
+/gavel:setup
 ```
 
 ## What it does
@@ -60,8 +60,8 @@ file_path → realpath() resolve
 | Layer | Source |
 |-------|--------|
 | Defaults | `config/defaults.yaml` |
-| Global | `~/.claude/permission-guard.yaml` |
-| Project | `$CLAUDE_PROJECT_DIR/.claude/permission-guard.yaml` |
+| Global | `~/.claude/gavel.yaml` |
+| Project | `$CLAUDE_PROJECT_DIR/.claude/gavel.yaml` |
 
 ### Config keys
 
@@ -92,10 +92,10 @@ phase_policy:
 
 | Command | Description |
 |---------|-------------|
-| `/permission-guard:setup` | Create venv, install deps, generate config, run tests |
-| `/permission-guard:show` | Display effective config with source attribution |
-| `/permission-guard:optimize` | Analyze decision log and suggest config changes |
-| `/permission-guard:permission-test` | Run E2E test suite |
+| `/gavel:setup` | Create venv, install deps, generate config, run tests |
+| `/gavel:show` | Display effective config with source attribution |
+| `/gavel:optimize` | Analyze decision log and suggest config changes |
+| `/gavel:test` | Run E2E test suite |
 
 ## Dependencies
 

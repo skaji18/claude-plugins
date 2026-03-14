@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
-# setup.sh — Set up permission-guard: venv, configs, tests
+# setup.sh — Set up gavel: venv, configs, tests
 set -euo pipefail
 
 PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT:-$(cd "$(dirname "$0")/.." && pwd)}"
 PROJECT_DIR="${CLAUDE_PROJECT_DIR:-$(pwd)}"
 
-echo "=== Setting up permission-guard ==="
+echo "=== Setting up gavel ==="
 echo ""
 
 # Step 1: venv
@@ -23,23 +23,23 @@ echo ""
 
 # Step 2a: global config
 echo "--- Step 2a: global config ---"
-GLOBAL_CONFIG="$HOME/.claude/permission-guard.yaml"
+GLOBAL_CONFIG="$HOME/.claude/gavel.yaml"
 if [ -f "$GLOBAL_CONFIG" ]; then
     echo "[skip] Global config already exists: $GLOBAL_CONFIG"
 else
     mkdir -p "$HOME/.claude"
     cat > "$GLOBAL_CONFIG" << 'YAML'
-# permission-guard GLOBAL config
+# gavel GLOBAL config
 # Applies to ALL projects. Project config overrides these settings.
-# Run /permission-guard:show to see effective settings.
+# Run /gavel:show to see effective settings.
 
 tools_add: {}
 tools_remove: []
 pipe_deny_right_add: []
 allowed_dirs_extra: []
-# Default: ~/.claude/permission-guard-audit.jsonl (from plugin defaults)
+# Default: ~/.claude/gavel-audit.jsonl (from plugin defaults)
 # Uncomment to override:
-# audit_log_path: "~/.claude/permission-guard-audit.jsonl"
+# audit_log_path: "~/.claude/gavel-audit.jsonl"
 YAML
     echo "[created] $GLOBAL_CONFIG"
 fi
@@ -47,15 +47,15 @@ echo ""
 
 # Step 2b: project config
 echo "--- Step 2b: project config ---"
-PROJECT_CONFIG="$PROJECT_DIR/.claude/permission-guard.yaml"
+PROJECT_CONFIG="$PROJECT_DIR/.claude/gavel.yaml"
 if [ -f "$PROJECT_CONFIG" ]; then
     echo "[skip] Project config already exists: $PROJECT_CONFIG"
 else
     mkdir -p "$PROJECT_DIR/.claude"
     cat > "$PROJECT_CONFIG" << 'YAML'
-# permission-guard PROJECT config
+# gavel PROJECT config
 # Applies to THIS project only. Overrides global config.
-# Run /permission-guard:show to see effective settings.
+# Run /gavel:show to see effective settings.
 
 tools_add: {}
 tools_remove: []

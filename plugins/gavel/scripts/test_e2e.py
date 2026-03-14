@@ -1,8 +1,4 @@
-"""E2E tests for permission-guard hook.
-
-Replaces test-permission.sh — runs the same test cases via subprocess,
-avoiding macOS bash version issues and permission-guard self-blocking.
-"""
+"""E2E tests for gavel hook."""
 
 import json
 import os
@@ -129,7 +125,7 @@ def write_yaml(path: str, content: str):
 
 
 def global_config_path():
-    return os.path.join(TEST_HOME, ".claude", "permission-guard.yaml")
+    return os.path.join(TEST_HOME, ".claude", "gavel.yaml")
 
 
 # ============================================================
@@ -329,7 +325,7 @@ def test_3tier_config():
     section("3-tier config merge")
 
     temp_project = tempfile.mkdtemp()
-    project_config = os.path.join(temp_project, ".claude", "permission-guard.yaml")
+    project_config = os.path.join(temp_project, ".claude", "gavel.yaml")
 
     try:
         # A: global adds bun
@@ -478,7 +474,7 @@ def test_file_guard():
 
     # project config overrides global
     temp_project = tempfile.mkdtemp()
-    project_config = os.path.join(temp_project, ".claude", "permission-guard.yaml")
+    project_config = os.path.join(temp_project, ".claude", "gavel.yaml")
     write_yaml(global_config_path(),
         "file_access_outside_project: \"deny\"\n")
     write_yaml(project_config,
@@ -497,7 +493,7 @@ def test_phase_policy():
     section("Phase Policy Configuration")
 
     temp_project = tempfile.mkdtemp()
-    project_config = os.path.join(temp_project, ".claude", "permission-guard.yaml")
+    project_config = os.path.join(temp_project, ".claude", "gavel.yaml")
 
     try:
         # --- 1. Default behavior (no config overrides, all phases default to ask) ---
@@ -585,7 +581,7 @@ def main():
         print(f"ERROR: {PYTHON} not found. Run setup.sh first.")
         sys.exit(1)
 
-    print("=== Permission Guard E2E Tests ===")
+    print("=== Gavel E2E Tests ===")
 
     try:
         test_baseline()

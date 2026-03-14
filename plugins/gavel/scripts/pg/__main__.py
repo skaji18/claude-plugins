@@ -1,7 +1,7 @@
-"""pg.__main__ -- CLI entry point for permission-guard package.
+"""pg.__main__ -- CLI entry point for gavel package.
 
 Usage:
-    python -m pg hook      Run the permission fallback hook (reads stdin)
+    python -m pg hook      Run the Bash validation hook (reads stdin)
     python -m pg show      Display effective config
     python -m pg analyze   Analyze audit log
     python -m pg apply     Apply optimization proposals

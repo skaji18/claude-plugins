@@ -1,4 +1,4 @@
-"""pg.analyze -- Parse permission-guard audit log and identify optimization candidates."""
+"""pg.analyze -- Parse gavel audit log and identify optimization candidates."""
 
 import json
 import os

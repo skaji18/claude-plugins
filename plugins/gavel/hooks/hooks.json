@@ -1,5 +1,5 @@
 {
-  "description": "8-phase Bash command permission validation + file access guard. Auto-approves safe commands, blocks dangerous patterns, guards file access paths.",
+  "description": "Tool-use validation hook. Auto-approves safe commands, blocks dangerous patterns, guards file access paths.",
   "hooks": {
     "PreToolUse": [
       {

@@ -1,8 +1,8 @@
 ---
-description: Run permission-guard validation tests to verify hook functionality
+description: Run gavel validation tests to verify hook functionality
 ---
 
-Run the permission-guard E2E test suite to verify the hook is working correctly.
+Run the gavel E2E test suite to verify the hook is working correctly.
 
 Execute the test script:
 ```

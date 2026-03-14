@@ -1,4 +1,4 @@
-"""pg.apply -- Merge proposed tools_add entries into a permission-guard config file."""
+"""pg.apply -- Merge proposed tools_add entries into a gavel config file."""
 
 import argparse
 import json
@@ -11,7 +11,7 @@ from pg.config import normalize_tools_add
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Apply optimization proposals to permission-guard config")
+    parser = argparse.ArgumentParser(description="Apply optimization proposals to gavel config")
     parser.add_argument("--target", required=True, choices=["global", "project"],
                         help="Config layer to write to")
     parser.add_argument("--proposals", required=True,
@@ -21,13 +21,13 @@ def main():
     # Resolve target path
     if args.target == "global":
         home = os.path.expanduser("~")
-        config_path = os.path.join(home, ".claude", "permission-guard.yaml")
+        config_path = os.path.join(home, ".claude", "gavel.yaml")
     else:
         project_dir = os.environ.get("CLAUDE_PROJECT_DIR", "")
         if not project_dir:
             print("Error: CLAUDE_PROJECT_DIR not set", file=sys.stderr)
             sys.exit(1)
-        config_path = os.path.join(project_dir, ".claude", "permission-guard.yaml")
+        config_path = os.path.join(project_dir, ".claude", "gavel.yaml")
 
     # Parse proposals
     try:
@@ -69,9 +69,9 @@ def main():
 
     # Add header comment
     if args.target == "global":
-        header = "# permission-guard GLOBAL config\n# Applies to ALL projects. Project config overrides these settings.\n"
+        header = "# gavel GLOBAL config\n# Applies to ALL projects. Project config overrides these settings.\n"
     else:
-        header = "# permission-guard PROJECT config\n# Applies to THIS project only. Overrides global config.\n"
+        header = "# gavel PROJECT config\n# Applies to THIS project only. Overrides global config.\n"
 
     with open(config_path, "w") as f:
         f.write(header)

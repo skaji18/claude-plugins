@@ -1,9 +1,0 @@
-{
-  "name": "permission-guard",
-  "version": "2.1.0",
-  "description": "Permission validation hook for Claude Code. Guards Bash commands (tree-sitter-bash AST) and file access (Read/Write/Edit/Glob/Grep) with configurable phase policies and path containment.",
-  "author": {
-    "name": "skaji18",
-    "email": "skaji18@users.noreply.github.com"
-  }
-}

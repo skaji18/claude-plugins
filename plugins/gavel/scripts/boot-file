@@ -3,7 +3,7 @@
 # If venv is missing, output "ask" with setup instruction instead of failing.
 VENV="${CLAUDE_PLUGIN_ROOT}/.venv/bin/python3"
 if [ ! -f "$VENV" ]; then
-  echo '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"ask","permissionDecisionReason":"permission-guard: venv not found. Run /permission-guard:setup"}}'
+  echo '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"ask","permissionDecisionReason":"gavel: venv not found. Run /gavel:setup"}}'
   exit 0
 fi
 PYTHONPATH="${CLAUDE_PLUGIN_ROOT}/scripts" exec "$VENV" -m pg file-hook

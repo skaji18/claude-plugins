@@ -1,9 +1,9 @@
-"""pg.show -- Display effective permission-guard config with 3-tier source attribution.
+"""pg.show -- Display effective gavel config with 3-tier source attribution.
 
 Source tags:
   [D] = defaults (plugin built-in)
-  [G] = global   (~/.claude/permission-guard.yaml)
-  [P] = project  (<project>/.claude/permission-guard.yaml)
+  [G] = global   (~/.claude/gavel.yaml)
+  [P] = project  (<project>/.claude/gavel.yaml)
 """
 
 import os
@@ -36,15 +36,15 @@ def main():
         plugin_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
     defaults_path = os.path.join(plugin_root, "config", "defaults.yaml")
     home = os.path.expanduser("~")
-    global_path = os.path.join(home, ".claude", "permission-guard.yaml")
+    global_path = os.path.join(home, ".claude", "gavel.yaml")
     project_dir = os.environ.get("CLAUDE_PROJECT_DIR", "")
     project_path = (
-        os.path.join(project_dir, ".claude", "permission-guard.yaml")
+        os.path.join(project_dir, ".claude", "gavel.yaml")
         if project_dir
         else "(CLAUDE_PROJECT_DIR not set)"
     )
 
-    print("Effective permission-guard config")
+    print("Effective gavel config")
     print()
     print("== config sources ==")
     print(f"  [D] {defaults_path}")

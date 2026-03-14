@@ -1,10 +1,10 @@
 """
-pg.config -- 3-layer configuration loader for permission-guard
+pg.config -- 3-layer configuration loader for gavel
 
 Layer order (later overrides earlier):
   1. defaults: config/defaults.yaml (plugin built-in)
-  2. global:   HOME/.claude/permission-guard.yaml (user-wide)
-  3. project:  CLAUDE_PROJECT_DIR/.claude/permission-guard.yaml (per-project)
+  2. global:   HOME/.claude/gavel.yaml (user-wide)
+  3. project:  CLAUDE_PROJECT_DIR/.claude/gavel.yaml (per-project)
 
 Each layer uses delta merging (tools_add, tools_remove, pipe_deny_right_add, etc.)
 """
@@ -29,12 +29,12 @@ def load_defaults():
 
 
 def load_global_config():
-    """Load global config from HOME/.claude/permission-guard.yaml.
+    """Load global config from HOME/.claude/gavel.yaml.
 
     Returns empty dict if the file does not exist.
     """
     home = Path.home()
-    global_config_path = home / ".claude" / "permission-guard.yaml"
+    global_config_path = home / ".claude" / "gavel.yaml"
     if global_config_path.exists():
         with open(global_config_path) as f:
             return yaml.safe_load(f) or dict()
@@ -42,14 +42,14 @@ def load_global_config():
 
 
 def load_project_config():
-    """Load project config from CLAUDE_PROJECT_DIR/.claude/permission-guard.yaml.
+    """Load project config from CLAUDE_PROJECT_DIR/.claude/gavel.yaml.
 
     Returns empty dict if CLAUDE_PROJECT_DIR is unset or the file does not exist.
     """
     project_dir = os.environ.get("CLAUDE_PROJECT_DIR", "")
     if not project_dir:
         return dict()
-    project_config_path = os.path.join(project_dir, ".claude", "permission-guard.yaml")
+    project_config_path = os.path.join(project_dir, ".claude", "gavel.yaml")
     if os.path.exists(project_config_path):
         with open(project_config_path) as f:
             return yaml.safe_load(f) or dict()

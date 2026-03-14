@@ -6,7 +6,7 @@ Claude Code plugins collection by skaji18.
 
 | Plugin | Description |
 |--------|-------------|
-| [permission-guard](plugins/permission-guard/) | Bash command validation + file access guard with configurable policies |
+| [gavel](plugins/gavel/) | Tool-use validation hook with configurable policies |
 | [impact-analysis](plugins/impact-analysis/) | LSP-based code impact analysis (PHP / JS / TS) |
 | [task-tracker](plugins/task-tracker/) | Obsidian-compatible task management |
 | [project-audit](plugins/project-audit/) | Comprehensive project quality audit |
