@@ -60,8 +60,8 @@ def main():
 
     # Ensure other keys exist
     config.setdefault("tools_remove", [])
-    config.setdefault("pipe_deny_right_add", [])
-    config.setdefault("allowed_dirs_extra", [])
+    config.setdefault("no_pipe_to_add", [])
+    config.setdefault("allow_paths_outside_project", [])
     config.setdefault("audit_log_path", "")
 
     # Write back

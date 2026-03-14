@@ -120,7 +120,7 @@ tools:
     dangerous_flags: ["--force"]
     default: "ask"
 
-pipe_deny_right:
+no_pipe_to:
   - "bash"
   - "sh"
   - "zsh"
@@ -137,14 +137,14 @@ pipe_deny_right:
   - "exec"
   - "xargs"
 
-allowed_dirs_extra: []
+allow_paths_outside_project: []
 audit_log_path: "~/.claude/gavel-audit.jsonl"
-# Phase policy: override the decision for each dangerous_node phase.
+# Shell syntax policy: override the decision for each dangerous_node phase.
 # Keys correspond to the part after the colon in dangerous_node IDs
 # (e.g., "P4:var_expansion" → key is "var_expansion").
 # Valid values: "deny", "ask", "allow"
 # Default values below match the original hardcoded behavior.
-phase_policy:
+shell_syntax_policy:
   background_execution: "ask"
   backtick_substitution: "ask"
   cmd_substitution: "ask"

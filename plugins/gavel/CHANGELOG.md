@@ -3,7 +3,7 @@
 ## [2.1.0] - 2026-03-14
 
 ### Added
-- **Configurable phase_policy** — each dangerous AST node phase (cmd_substitution, var_expansion, env_assignment, glob_chars, background_execution, backtick_substitution) can be independently set to allow/ask/deny via config
+- **Configurable shell_syntax_policy** — each dangerous AST node phase (cmd_substitution, var_expansion, env_assignment, glob_chars, background_execution, backtick_substitution) can be independently set to allow/ask/deny via config
 - **Most restrictive wins** — when multiple dangerous nodes are present, all are evaluated and the strictest policy applies (deny > ask > allow)
 
 ### Changed
@@ -12,7 +12,7 @@
 ## [2.0.0] - 2026-03-14
 
 ### Added
-- **File access guard** — new PreToolUse hook for Read/Write/Edit/Glob/Grep. Checks file paths against PROJECT_DIR and allowed_dirs_extra using realpath resolution
+- **File access guard** — new PreToolUse hook for Read/Write/Edit/Glob/Grep. Checks file paths against PROJECT_DIR and allow_paths_outside_project using realpath resolution
 - **`file_access_outside_project` config** — controls decision for file access outside allowed directories (default: "ask", can be set to "deny")
 - **`path_check.py` module** — shared path normalization and containment logic used by both Bash and file access hooks
 - **`boot-file` entry point** — lightweight bootstrap for file access hook
@@ -20,7 +20,7 @@
 
 ### Changed
 - **`detect_project_dir` uses realpath** — fixes symlink comparison mismatch (e.g., macOS `/tmp` → `/private/tmp`)
-- **`allowed_dirs_extra` resolved with realpath** — consistent with file path resolution
+- **`allow_paths_outside_project` resolved with realpath** — consistent with file path resolution
 - **`fallback.py` refactored** — imports shared functions from `path_check.py`
 
 ## [1.4.0] - 2026-03-09

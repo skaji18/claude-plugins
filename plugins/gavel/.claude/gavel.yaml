@@ -1,9 +1,0 @@
-# gavel PROJECT config
-# Applies to THIS project only. Overrides global config.
-# Run /gavel:show to see effective settings.
-
-tools_add: {}
-tools_remove: []
-pipe_deny_right_add: []
-allowed_dirs_extra: []
-# audit_log_path: inherited from global/defaults

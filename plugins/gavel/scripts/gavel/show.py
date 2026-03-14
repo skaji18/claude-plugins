@@ -168,13 +168,13 @@ def main():
             d_src = "D"
         print(f"    default = {default_val}  [{d_src}]")
 
-    # --- pipe_deny_right ---
+    # --- no_pipe_to ---
     print()
-    print("== pipe_deny_right ==")
-    default_pipes = set(defaults.get("pipe_deny_right", []))
-    effective_pipes = sorted(effective.get("pipe_deny_right", []))
-    global_pipe_add = set(global_cfg.get("pipe_deny_right_add", []))
-    project_pipe_add = set(project_cfg.get("pipe_deny_right_add", []))
+    print("== no_pipe_to ==")
+    default_pipes = set(defaults.get("no_pipe_to", []))
+    effective_pipes = sorted(effective.get("no_pipe_to", []))
+    global_pipe_add = set(global_cfg.get("no_pipe_to_add", []))
+    project_pipe_add = set(project_cfg.get("no_pipe_to_add", []))
 
     from_d = sorted(p for p in effective_pipes if p in default_pipes)
     from_g = sorted(
@@ -197,10 +197,10 @@ def main():
     print()
     print("== other ==")
 
-    # allowed_dirs_extra (last non-empty layer wins entirely)
-    dirs = effective.get("allowed_dirs_extra", [])
-    delta_dirs_p = project_cfg.get("allowed_dirs_extra", [])
-    delta_dirs_g = global_cfg.get("allowed_dirs_extra", [])
+    # allow_paths_outside_project (last non-empty layer wins entirely)
+    dirs = effective.get("allow_paths_outside_project", [])
+    delta_dirs_p = project_cfg.get("allow_paths_outside_project", [])
+    delta_dirs_g = global_cfg.get("allow_paths_outside_project", [])
     if dirs:
         if delta_dirs_p:
             d_src = "P"
@@ -208,11 +208,11 @@ def main():
             d_src = "G"
         else:
             d_src = "D"
-        print(f"  allowed_dirs_extra:  [{d_src}]")
+        print(f"  allow_paths_outside_project:  [{d_src}]")
         for d in dirs:
             print(f"    {d}")
     else:
-        print("  allowed_dirs_extra: (none)")
+        print("  allow_paths_outside_project: (none)")
 
     # audit_log_path
     audit = get_audit_log_path()
@@ -229,25 +229,25 @@ def main():
     else:
         print("  audit_log: (none)")
 
-    # --- Phase Policy ---
+    # --- Shell Syntax Policy ---
     print()
-    print("== phase_policy ==")
-    phase_policy = effective.get("phase_policy", {})
-    default_pp = defaults.get("phase_policy", {})
-    global_pp = global_cfg.get("phase_policy", {})
-    project_pp = project_cfg.get("phase_policy", {})
+    print("== shell_syntax_policy ==")
+    syntax_policy = effective.get("shell_syntax_policy", {})
+    default_ssp = defaults.get("shell_syntax_policy", {})
+    global_ssp = global_cfg.get("shell_syntax_policy", {})
+    project_ssp = project_cfg.get("shell_syntax_policy", {})
 
-    for key in sorted(phase_policy):
-        val = phase_policy[key]
-        if key in project_pp and project_pp[key]:
-            pp_src = "P"
-        elif key in global_pp and global_pp[key]:
-            pp_src = "G"
+    for key in sorted(syntax_policy):
+        val = syntax_policy[key]
+        if key in project_ssp and project_ssp[key]:
+            ssp_src = "P"
+        elif key in global_ssp and global_ssp[key]:
+            ssp_src = "G"
         else:
-            pp_src = "D"
-        print(f"  {key}: {val}  [{pp_src}]")
+            ssp_src = "D"
+        print(f"  {key}: {val}  [{ssp_src}]")
 
-    if not phase_policy:
+    if not syntax_policy:
         print("  (none)")
 
 

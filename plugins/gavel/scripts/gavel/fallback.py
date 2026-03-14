@@ -1,7 +1,7 @@
 """
 gavel.fallback -- Bash command validation hook.
 
-Automatically approves PROJECT_DIR-scoped execution (+ allowed_dirs_extra) with validation.
+Automatically approves PROJECT_DIR-scoped execution (+ allow_paths_outside_project) with validation.
 Uses tree-sitter-bash for proper shell AST parsing.
 """
 
@@ -101,7 +101,7 @@ def validate_single_command_words(words, config):
         norm_project = os.path.normpath(PROJECT_DIR)
         if abs_cmd == norm_project or abs_cmd.startswith(norm_project + "/"):
             return ("allow", f"project_contained_cmd:{cmd_basename}")
-        for extra_dir in config.get("allowed_dirs_extra", []):
+        for extra_dir in config.get("allow_paths_outside_project", []):
             if not extra_dir:
                 continue
             norm_extra = os.path.normpath(extra_dir)
@@ -170,15 +170,15 @@ def validate_parsed_result(parsed, config):
     4. Redirect paths for project containment
     """
     # 1. Dangerous nodes from AST (variable expansion, cmd substitution, etc.)
-    #    Decision is driven by phase_policy config (defaults: all=ask).
+    #    Decision is driven by shell_syntax_policy config (defaults: all=ask).
     #    Evaluate ALL nodes; most restrictive policy wins (deny > ask > allow).
-    phase_policy = config.get("phase_policy", {})
+    syntax_policy = config.get("shell_syntax_policy", {})
     if parsed.dangerous_nodes:
         worst_decision = "allow"
         worst_node = parsed.dangerous_nodes[0]
         for node in parsed.dangerous_nodes:
             phase_key = node.split(":", 1)[1] if ":" in node else node
-            policy = phase_policy.get(phase_key, "ask")
+            policy = syntax_policy.get(phase_key, "ask")
             if policy == "deny":
                 return ("deny", node)
             elif policy == "ask" and worst_decision != "deny":
@@ -192,13 +192,13 @@ def validate_parsed_result(parsed, config):
 
     # 2. Dangerous pipe targets
     if parsed.pipe_commands:
-        pipe_deny_right = config.get("pipe_deny_right", [])
+        no_pipe_to = config.get("no_pipe_to", [])
         for pipe_group in parsed.pipe_commands:
             # Check all non-first commands in each pipe group
             for cmd_info in pipe_group[1:]:
                 if cmd_info.words:
                     basename = os.path.basename(cmd_info.words[0])
-                    if basename in pipe_deny_right:
+                    if basename in no_pipe_to:
                         return ("reject", f"dangerous_pipe_target:{basename}")
 
     # 3. Validate each command segment

@@ -6,7 +6,7 @@ Layer order (later overrides earlier):
   2. global:   HOME/.claude/gavel.yaml (user-wide)
   3. project:  CLAUDE_PROJECT_DIR/.claude/gavel.yaml (per-project)
 
-Each layer uses delta merging (tools_add, tools_remove, pipe_deny_right_add, etc.)
+Each layer uses delta merging (tools_add, tools_remove, no_pipe_to_add, etc.)
 """
 
 import os
@@ -78,8 +78,8 @@ def merge_config(base, delta):
     Delta keys:
       - tools_add: dict of tool entries to add/merge
       - tools_remove: list of tool names to remove
-      - pipe_deny_right_add: list of commands to add to pipe_deny_right
-      - allowed_dirs_extra: overrides base value if present
+      - no_pipe_to_add: list of commands to add to no_pipe_to
+      - allow_paths_outside_project: overrides base value if present
       - audit_log_path: overrides base value if present
     """
     effective_tools = dict(base.get("tools", dict()))
@@ -103,26 +103,26 @@ def merge_config(base, delta):
     for name in delta.get("tools_remove", list()):
         effective_tools.pop(name, None)
 
-    # pipe_deny_right
+    # no_pipe_to
     effective_pipe = list(set(
-        base.get("pipe_deny_right", list())
-        + delta.get("pipe_deny_right_add", list())
+        base.get("no_pipe_to", list())
+        + delta.get("no_pipe_to_add", list())
     ))
 
     result = dict()
     result["tools"] = effective_tools
-    result["pipe_deny_right"] = effective_pipe
-    # allowed_dirs_extra: use delta only if non-empty, otherwise inherit base
-    # This prevents an empty template (allowed_dirs_extra: []) from wiping global values
-    delta_dirs = delta.get("allowed_dirs_extra", list())
-    result["allowed_dirs_extra"] = delta_dirs if delta_dirs else base.get("allowed_dirs_extra", list())
+    result["no_pipe_to"] = effective_pipe
+    # allow_paths_outside_project: use delta only if non-empty, otherwise inherit base
+    # This prevents an empty template (allow_paths_outside_project: []) from wiping global values
+    delta_dirs = delta.get("allow_paths_outside_project", list())
+    result["allow_paths_outside_project"] = delta_dirs if delta_dirs else base.get("allow_paths_outside_project", list())
     # audit_log_path: use delta only if non-empty
     delta_audit = delta.get("audit_log_path", "")
     result["audit_log_path"] = delta_audit if delta_audit else base.get("audit_log_path", "")
-    # phase_policy: shallow dict merge (delta keys override base keys)
-    base_pp = dict(base.get("phase_policy", {}))
-    base_pp.update({k: v for k, v in delta.get("phase_policy", {}).items() if v})
-    result["phase_policy"] = base_pp
+    # shell_syntax_policy: shallow dict merge (delta keys override base keys)
+    base_ssp = dict(base.get("shell_syntax_policy", {}))
+    base_ssp.update({k: v for k, v in delta.get("shell_syntax_policy", {}).items() if v})
+    result["shell_syntax_policy"] = base_ssp
     return result
 
 

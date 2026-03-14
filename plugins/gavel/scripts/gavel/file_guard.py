@@ -1,7 +1,7 @@
 """
 gavel.file_guard -- file access guard hook for Read/Write/Edit/Glob/Grep.
 
-Checks that file_path (or path) stays within PROJECT_DIR or allowed_dirs_extra.
+Checks that file_path (or path) stays within PROJECT_DIR or allow_paths_outside_project.
 Outside paths always produce "ask".
 """
 
@@ -55,7 +55,7 @@ def main():
     # Normalize and check containment
     config = load_config()
     project_dir = detect_project_dir()
-    allowed_dirs = config.get("allowed_dirs_extra", [])
+    allowed_dirs = config.get("allow_paths_outside_project", [])
 
     contained, resolved = check_path_containment(file_path, project_dir, allowed_dirs)
 

@@ -362,11 +362,11 @@ def test_3tier_config():
         write_yaml(project_config, "tools_add:\n  ls: \"allow\"\n")
         run_test("global removes ls, project adds back -> allow", "ls", "allow", env)
 
-        # H: pipe_deny_right from both layers
-        write_yaml(global_config_path(), "pipe_deny_right_add:\n  - \"lua\"\n")
-        write_yaml(project_config, "pipe_deny_right_add:\n  - \"deno\"\n")
-        run_test("pipe_deny_right lua -> deny", "cat file | lua", "dialog", env)
-        run_test("pipe_deny_right deno -> deny", "cat file | deno", "dialog", env)
+        # H: no_pipe_to from both layers
+        write_yaml(global_config_path(), "no_pipe_to_add:\n  - \"lua\"\n")
+        write_yaml(project_config, "no_pipe_to_add:\n  - \"deno\"\n")
+        run_test("no_pipe_to lua -> deny", "cat file | lua", "dialog", env)
+        run_test("no_pipe_to deno -> deny", "cat file | deno", "dialog", env)
 
         # I: global map entry, project extends
         write_yaml(global_config_path(),
@@ -453,18 +453,18 @@ def test_file_guard():
     run_file_test("Read empty path",
         "Read", {"file_path": ""}, "ask")
 
-    # allowed_dirs_extra: read from allowed dir -> allow
+    # allow_paths_outside_project: read from allowed dir -> allow
     temp_allowed = tempfile.mkdtemp()
     test_file = os.path.join(temp_allowed, "test.txt")
     with open(test_file, "w") as f:
         f.write("test")
     write_yaml(global_config_path(),
-        f"allowed_dirs_extra:\n  - \"{temp_allowed}\"\n")
-    run_file_test("Read allowed_dirs_extra",
+        f"allow_paths_outside_project:\n  - \"{temp_allowed}\"\n")
+    run_file_test("Read allow_paths_outside_project",
         "Read", {"file_path": test_file}, "allow")
     shutil.rmtree(temp_allowed, ignore_errors=True)
 
-    # Outside project with no allowed_dirs_extra -> ask
+    # Outside project with no allow_paths_outside_project -> ask
     if os.path.exists(global_config_path()):
         os.remove(global_config_path())
     run_file_test("Read outside (no extra dirs)",
@@ -473,8 +473,8 @@ def test_file_guard():
         "Write", {"file_path": "/tmp/evil.txt", "content": "bad"}, "ask")
 
 
-def test_phase_policy():
-    section("Phase Policy Configuration")
+def test_shell_syntax_policy():
+    section("Shell Syntax Policy Configuration")
 
     temp_project = tempfile.mkdtemp()
     project_config = os.path.join(temp_project, ".claude", "gavel.yaml")
@@ -487,33 +487,33 @@ def test_phase_policy():
 
         # --- 2. Override var_expansion to deny ---
         write_yaml(global_config_path(),
-            "phase_policy:\n  var_expansion: \"deny\"\n")
+            "shell_syntax_policy:\n  var_expansion: \"deny\"\n")
         run_test_exact("override var_expansion=deny: echo $PATH -> deny",
             "echo $PATH", "deny")
 
         # --- 3. Override glob_chars to allow ---
         write_yaml(global_config_path(),
-            "phase_policy:\n  glob_chars: \"allow\"\n")
+            "shell_syntax_policy:\n  glob_chars: \"allow\"\n")
         run_test_exact("override glob_chars=allow: ls *.py -> allow",
             "ls *.py", "allow")
 
         # --- 4. Override env_assignment to allow ---
         write_yaml(global_config_path(),
-            "phase_policy:\n  env_assignment: \"allow\"\n")
+            "shell_syntax_policy:\n  env_assignment: \"allow\"\n")
         run_test_exact("override env_assignment=allow: PYTHONPATH=x ls -> allow",
             "PYTHONPATH=x ls", "allow")
 
         # --- 5. Override background_execution to ask ---
         write_yaml(global_config_path(),
-            "phase_policy:\n  background_execution: \"ask\"\n")
+            "shell_syntax_policy:\n  background_execution: \"ask\"\n")
         run_test_exact("override background_execution=ask: ls & -> ask",
             "ls &", "ask")
 
-        # --- 6. Project overrides global phase_policy ---
+        # --- 6. Project overrides global shell_syntax_policy ---
         write_yaml(global_config_path(),
-            "phase_policy:\n  var_expansion: \"deny\"\n")
+            "shell_syntax_policy:\n  var_expansion: \"deny\"\n")
         write_yaml(project_config,
-            "phase_policy:\n  var_expansion: \"ask\"\n")
+            "shell_syntax_policy:\n  var_expansion: \"ask\"\n")
         env = {"CLAUDE_PROJECT_DIR": temp_project}
         run_test_exact("project overrides global: echo $PATH -> ask",
             "echo $PATH", "ask", env)
@@ -522,25 +522,25 @@ def test_phase_policy():
         # echo $HOME *.txt triggers both P4:var_expansion and P7:glob_chars.
         # var_expansion=allow, glob_chars=ask → most restrictive is "ask"
         write_yaml(global_config_path(),
-            "phase_policy:\n  var_expansion: \"allow\"\n  glob_chars: \"ask\"\n")
+            "shell_syntax_policy:\n  var_expansion: \"allow\"\n  glob_chars: \"ask\"\n")
         if os.path.exists(project_config):
             os.remove(project_config)
         run_test_exact("most restrictive wins: var=allow + glob=ask -> ask",
             "echo $HOME *.txt", "ask")
         # var_expansion=allow, glob_chars=deny → most restrictive is "deny"
         write_yaml(global_config_path(),
-            "phase_policy:\n  var_expansion: \"allow\"\n  glob_chars: \"deny\"\n")
+            "shell_syntax_policy:\n  var_expansion: \"allow\"\n  glob_chars: \"deny\"\n")
         run_test_exact("most restrictive wins: var=allow + glob=deny -> deny",
             "echo $HOME *.txt", "deny")
         # Both allow → falls through to tools validation → allow (echo is allowed)
         write_yaml(global_config_path(),
-            "phase_policy:\n  var_expansion: \"allow\"\n  glob_chars: \"allow\"\n")
+            "shell_syntax_policy:\n  var_expansion: \"allow\"\n  glob_chars: \"allow\"\n")
         run_test_exact("both allow: var=allow + glob=allow -> allow",
             "echo $HOME *.txt", "allow")
 
-        # --- 8. No phase_policy in config -> identical to current defaults ---
+        # --- 8. No shell_syntax_policy in config -> identical to current defaults ---
         # Clean up all configs -> fall back to defaults.yaml which has
-        # the default phase_policy section
+        # the default shell_syntax_policy section
         if os.path.exists(global_config_path()):
             os.remove(global_config_path())
         if os.path.exists(project_config):
@@ -582,7 +582,7 @@ def main():
         test_compound_commands()
         test_3tier_config()
         test_file_guard()
-        test_phase_policy()
+        test_shell_syntax_policy()
     finally:
         shutil.rmtree(TEST_HOME, ignore_errors=True)
 

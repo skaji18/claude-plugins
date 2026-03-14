@@ -39,13 +39,13 @@ def is_path_within(abs_path, base_dir):
     return norm_path == norm_base or norm_path.startswith(norm_base + "/")
 
 
-def check_path_containment(file_path, project_dir, allowed_dirs_extra):
-    """Check if file_path is within project_dir or any allowed_dirs_extra.
+def check_path_containment(file_path, project_dir, allow_paths_outside_project):
+    """Check if file_path is within project_dir or any allow_paths_outside_project.
 
     Args:
         file_path: The raw path to check (relative or absolute).
         project_dir: The project root directory (absolute).
-        allowed_dirs_extra: List of additional allowed directories.
+        allow_paths_outside_project: List of additional allowed directories.
 
     Returns:
         (is_contained: bool, resolved_path: str)
@@ -58,7 +58,7 @@ def check_path_containment(file_path, project_dir, allowed_dirs_extra):
     if is_path_within(resolved, project_dir):
         return True, resolved
 
-    for extra_dir in (allowed_dirs_extra or []):
+    for extra_dir in (allow_paths_outside_project or []):
         if not extra_dir:
             continue
         resolved_extra = canonicalize_path(extra_dir)

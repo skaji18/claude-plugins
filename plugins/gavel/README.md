@@ -21,12 +21,12 @@ Commands pass through pre-validation (null bytes, control chars, unicode whitesp
 
 | Construct | Default decision | Configurable via |
 |-----------|-----------------|------------------|
-| Command substitution `$(cmd)` | ask | `phase_policy.cmd_substitution` |
-| Backtick substitution `` `cmd` `` | ask | `phase_policy.backtick_substitution` |
-| Variable expansion `$VAR` | ask | `phase_policy.var_expansion` |
-| Env assignment `FOO=bar cmd` | ask | `phase_policy.env_assignment` |
-| Background `&` | ask | `phase_policy.background_execution` |
-| Unquoted glob `*.py` | ask | `phase_policy.glob_chars` |
+| Command substitution `$(cmd)` | ask | `shell_syntax_policy.cmd_substitution` |
+| Backtick substitution `` `cmd` `` | ask | `shell_syntax_policy.backtick_substitution` |
+| Variable expansion `$VAR` | ask | `shell_syntax_policy.var_expansion` |
+| Env assignment `FOO=bar cmd` | ask | `shell_syntax_policy.env_assignment` |
+| Background `&` | ask | `shell_syntax_policy.background_execution` |
+| Unquoted glob `*.py` | ask | `shell_syntax_policy.glob_chars` |
 
 Per-command validation uses a tools dictionary with three entry types:
 
@@ -49,7 +49,7 @@ Read/Write/Edit/Glob/Grep tool calls are checked for path containment:
 ```
 file_path → realpath() resolve
   ├─ Within PROJECT_DIR → allow
-  ├─ Within allowed_dirs_extra → allow
+  ├─ Within allow_paths_outside_project → allow
   └─ Otherwise → ask
 ```
 
@@ -69,19 +69,19 @@ file_path → realpath() resolve
 |-----|------|-------------|
 | `tools_add` | map | Add or override tool entries |
 | `tools_remove` | list | Remove tool names from defaults |
-| `pipe_deny_right_add` | list | Add to pipe deny list |
-| `allowed_dirs_extra` | list | Additional allowed directories (shared by Bash and file access) |
+| `no_pipe_to_add` | list | Add to pipe deny list |
+| `allow_paths_outside_project` | list | Additional allowed directories (shared by Bash and file access) |
 | `audit_log_path` | string | Override audit log path |
-| `phase_policy` | map | Per-phase AST validation decisions (see table above) |
+| `shell_syntax_policy` | map | Per-phase AST validation decisions (see table above) |
 
 ### Example
 
 ```yaml
 tools_add:
   bun: "allow"
-allowed_dirs_extra:
+allow_paths_outside_project:
   - "/Users/me/shared-libs"
-phase_policy:
+shell_syntax_policy:
   glob_chars: "allow"
   var_expansion: "ask"
 ```

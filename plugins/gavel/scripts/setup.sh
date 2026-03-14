@@ -33,13 +33,32 @@ else
 # Applies to ALL projects. Project config overrides these settings.
 # Run /gavel:show to see effective settings.
 
+# Add or override tool permissions (built-in defaults stay active):
+#   simple:       bun: "allow"          — always auto-approve
+#   confirm:      my-deploy: "ask"      — always ask first
+#   fine-grained:
+#     terraform:
+#       ask: ["apply", "destroy"]
+#       dangerous_flags: ["--force"]
+#       default: "allow"
 tools_add: {}
+
+# Remove tools from built-in defaults:
 tools_remove: []
-pipe_deny_right_add: []
-allowed_dirs_extra: []
-# Default: ~/.claude/gavel-audit.jsonl (from plugin defaults)
-# Uncomment to override:
-# audit_log_path: "~/.claude/gavel-audit.jsonl"
+
+# Block additional commands from receiving piped input:
+no_pipe_to_add: []
+
+# Directories outside the project where file access is auto-allowed:
+allow_paths_outside_project: []
+
+# audit_log_path: ~/.claude/gavel-audit.jsonl
+
+# Shell syntax restrictions (allow / ask / deny):
+# shell_syntax_policy:
+#   var_expansion: "allow"
+#   cmd_substitution: "ask"
+#   glob_chars: "allow"
 YAML
     echo "[created] $GLOBAL_CONFIG"
 fi
@@ -57,11 +76,26 @@ else
 # Applies to THIS project only. Overrides global config.
 # Run /gavel:show to see effective settings.
 
+# Add or override tool permissions:
+#   bun: "allow"
+#   terraform: { ask: ["apply", "destroy"], default: "allow" }
 tools_add: {}
+
+# Remove tools from defaults for this project:
 tools_remove: []
-pipe_deny_right_add: []
-allowed_dirs_extra: []
+
+# Block additional commands from receiving piped input:
+no_pipe_to_add: []
+
+# Directories outside the project where file access is auto-allowed:
+allow_paths_outside_project: []
+
 # audit_log_path: inherited from global/defaults
+
+# Shell syntax restrictions (allow / ask / deny):
+# shell_syntax_policy:
+#   var_expansion: "allow"
+#   glob_chars: "allow"
 YAML
     echo "[created] $PROJECT_CONFIG"
 fi
