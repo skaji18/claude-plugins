@@ -1,76 +1,54 @@
 # Changelog
 
+## [2.1.0] - 2026-03-14
+
+### Added
+- **Configurable phase_policy** — each dangerous AST node phase (cmd_substitution, var_expansion, env_assignment, glob_chars, background_execution, backtick_substitution) can be independently set to allow/ask/deny via config
+- **Most restrictive wins** — when multiple dangerous nodes are present, all are evaluated and the strictest policy applies (deny > ask > allow)
+
+### Changed
+- **Default phase policies changed to "ask"** — all phases now default to "ask" instead of hardcoded deny. Users can tighten to "deny" per phase if desired
+
+## [2.0.0] - 2026-03-14
+
+### Added
+- **File access guard** — new PreToolUse hook for Read/Write/Edit/Glob/Grep. Checks file paths against PROJECT_DIR and allowed_dirs_extra using realpath resolution
+- **`file_access_outside_project` config** — controls decision for file access outside allowed directories (default: "ask", can be set to "deny")
+- **`path_check.py` module** — shared path normalization and containment logic used by both Bash and file access hooks
+- **`boot-file` entry point** — lightweight bootstrap for file access hook
+- 19 file access E2E tests
+
+### Changed
+- **`detect_project_dir` uses realpath** — fixes symlink comparison mismatch (e.g., macOS `/tmp` → `/private/tmp`)
+- **`allowed_dirs_extra` resolved with realpath** — consistent with file path resolution
+- **`fallback.py` refactored** — imports shared functions from `path_check.py`
+
 ## [1.4.0] - 2026-03-09
 
 ### Changed
-- **tree-sitter-bash migration** — replaced bashlex with [tree-sitter-bash](https://github.com/tree-sitter/tree-sitter-bash) for AST parsing. Fixes heredoc support, quoted string handling, and special variable recognition that bashlex could not handle.
-- **P5 demoted** — `variable_assignment` (`FOO=bar`) now produces **ask** instead of **deny**, reducing false positives for safe patterns like `git -c key=val`.
-- **P6 removed** — tilde expansion detection removed entirely (was unnecessary with proper path resolution).
-- **P7 improved** — glob detection now uses tree-sitter quoting context. Quoted strings (`'...'`, `"..."`) are no longer flagged for glob characters, fixing false positives on patterns like `jq '.[].name'`.
-- **Safe special variables** — `$?`, `$#`, `$!`, `$-`, `$0`, `$_`, `$@`, `$$` are recognized as safe and allowed.
-- Dependencies changed: `bashlex` → `tree-sitter` + `tree-sitter-bash`
+- **tree-sitter-bash migration** — replaced bashlex with tree-sitter-bash for AST parsing
+- **P5 demoted** — `variable_assignment` now produces ask instead of deny
+- **P7 improved** — glob detection uses tree-sitter quoting context
+- **Safe special variables** — `$?`, `$#`, `$!`, `$-`, `$0`, `$_`, `$@`, `$$` recognized as safe
 
 ### Added
-- **cp** added to defaults as `"allow"`
-- **gh** added to defaults with allow list for read-only subcommands (`pr view`, `issue list`, etc.) and `dangerous_flags: ["-X", "--method"]`
+- **cp** added to defaults as allow
+- **gh** added with read-only subcommand allow list
 
 ## [1.3.0] - 2026-03-07
 
 ### Changed
-- **bashlex AST parsing** — replaced regex-based shell syntax analysis (Phase 2, split_compound, _strip_quoted_content) with proper AST parsing via bashlex. Dangerous constructs (command substitution, variable expansion, tilde, env assignment, background execution) are now detected by AST node type instead of regex heuristics.
-- **Subshell handling** — `(cmd)` subshells are now decomposed and validated per-command instead of being opaque. Previously undetected by the regex parser.
-- **Phase 1.5 removed** — safe suffix stripping (|| true, 2>&1, etc.) is no longer needed since bashlex handles these as proper AST nodes.
-- **P8/P8.5 guards removed** — no-space interpreter and quoted command name checks are unnecessary with proper tokenization.
-- **Test suite rewritten in Python** — E2E tests now use subprocess to invoke the hook, eliminating macOS bash version issues and permission-guard self-blocking. 144 test cases.
-- **bashlex** added as dependency (installed by setup.sh)
-
-### Added
-- **pg/parser.py** — new module for bashlex-based command parsing with ParseResult data structure
-- **bashlex_parse_failure** — new fallback: if bashlex cannot parse the command, decision is "ask" (safe default)
+- **bashlex AST parsing** — replaced regex-based analysis with proper AST parsing
+- **Test suite rewritten in Python** — 144 test cases via subprocess
 
 ## [1.2.0] - 2026-03-04
 
 ### Changed
-- **scripts/pg/ package** — migrated flat scripts to Python package structure with `python -m pg <subcmd>` dispatch
-- **boot wrapper** uses `PYTHONPATH` + `python -m pg hook` invocation
-- **commands/*.md** updated to use `python -m pg show/analyze/apply`
-- Removed legacy scripts: permission-fallback, pg_config.py, show-config, analyze-log, apply-config
-
-## [Unreleased]
-
-### Added
-- **project-contained command auto-allow** — commands with a slash in the name (e.g., .venv/bin/pytest, scripts/deploy.sh) are resolved to absolute path via normpath and auto-allowed if within PROJECT_DIR or allowed_dirs_extra. No new config keys needed.
-- **docs/DESIGN.md** — design document covering value proposition, architecture, and design principles
-- **deny-by-default** — unknown commands now prompt user; tools dict contains 37 allow entries for auto-approval
-- **safe-enumeration** — tools unified structure with allow/ask/default model and ask subcommand lists
-- **flag decomposition** — compound short flags (-xeu) decomposed and checked individually against dangerous_flags
-
-### Fixed
-- **F-001** — shell quoting bypass in command name position
-- **F-002** — flag-argument shifting bypass via fail-closed on leading flags
-- **F-003** — python/python2 not in tools dict (triggers ask as unknown_command)
-- **F-004** — dash/zsh/ksh/fish/csh/tcsh not in tools dict (triggers ask as unknown_command)
-- **F-005** — nested /scripts/ substring match replaced with startswith
-- **F-006** — symlink TOCTOU via normpath-to-realpath in canonicalize_path
-- **F-007** — path variant ./  vs . normalization in subcommand matching
-- **F-008** — long flag =value syntax via prefix match
-- **F-009** — rule index counter bug with separate sub_idx
-- **F-010** — command builtin not in tools dict (triggers ask as unknown_command)
-- **F-013** — case-sensitive tools lookup means uppercase variants trigger ask as unknown_command
-- **F-014** — special parameter expansion regex broadened
-- **F-016** — Unicode whitespace rejection in Phase 1
-- **NEW-5** — missing git subcommands added to ask list (rebase, reset, filter-branch, etc.)
-- **NEW-6** — find/chmod/chown added as tools ask entries
-
-### Changed
-- **test suite** — expanded from 13 to 124 test cases covering all new features
+- **Python package structure** — migrated to `python -m pg <subcmd>` dispatch
 
 ## [1.0.0] - 2026-02-15
 
 ### Added
 - Initial release: 8-phase Bash command validation pipeline
-- Dual-mode support: Plugin mode ($CLAUDE_PLUGIN_ROOT) and inline mode
-- 4-layer config merge (Hardcoded → Plugin → Project → Local)
-- Security floors: sudo, su, rm, rmdir always require dialog
-- Frozen keys: interpreters config cannot be overridden
-- Test suite with 189+ test cases
+- 3-layer config merge, deny-by-default, NEVER_SAFE hardcoding
+- Project-contained command auto-allow
