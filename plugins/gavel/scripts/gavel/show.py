@@ -229,6 +229,39 @@ def main():
     else:
         print("  audit_log: (none)")
 
+    # file_access_outside_project
+    fao = effective.get("file_access_outside_project", "ask")
+    fao_p = project_cfg.get("file_access_outside_project", "")
+    fao_g = global_cfg.get("file_access_outside_project", "")
+    if fao_p:
+        fao_src = "P"
+    elif fao_g:
+        fao_src = "G"
+    else:
+        fao_src = "D"
+    print(f"  file_access_outside_project: {fao}  [{fao_src}]")
+
+    # --- Phase Policy ---
+    print()
+    print("== phase_policy ==")
+    phase_policy = effective.get("phase_policy", {})
+    default_pp = defaults.get("phase_policy", {})
+    global_pp = global_cfg.get("phase_policy", {})
+    project_pp = project_cfg.get("phase_policy", {})
+
+    for key in sorted(phase_policy):
+        val = phase_policy[key]
+        if key in project_pp and project_pp[key]:
+            pp_src = "P"
+        elif key in global_pp and global_pp[key]:
+            pp_src = "G"
+        else:
+            pp_src = "D"
+        print(f"  {key}: {val}  [{pp_src}]")
+
+    if not phase_policy:
+        print("  (none)")
+
 
 if __name__ == "__main__":
     main()
