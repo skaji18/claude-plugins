@@ -56,7 +56,12 @@ def _run_hook(input_str: str, env_overrides: dict = None, cmd=None) -> dict:
 
 
 def _get_decision(output: dict) -> str:
-    return output.get("hookSpecificOutput", {}).get("permissionDecision", "")
+    hook = output.get("hookSpecificOutput", {})
+    decision = hook.get("permissionDecision", "")
+    # ask is now delegated: no permissionDecision, but additionalContext present
+    if not decision and hook.get("additionalContext", ""):
+        return "ask"
+    return decision
 
 
 def _get_reason(output: dict) -> str:
