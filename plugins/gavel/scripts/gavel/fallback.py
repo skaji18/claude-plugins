@@ -261,17 +261,31 @@ def _write_audit_log(decision, reason, command=""):
 
 
 def _output(decision, reason, command=""):
-    """Output hook decision JSON, write audit log, and exit."""
+    """Output hook decision JSON, write audit log, and exit.
+
+    - allow/deny: gavel makes the decision (permissionDecision set)
+    - ask: gavel abstains — delegates to Claude Code's normal permission flow
+      (respects bypass mode). Reason is passed via additionalContext.
+    """
     if DEBUG and decision != "allow":
         print(f"{decision.upper()}[{reason}]", file=sys.stderr)
     _write_audit_log(decision, reason, command)
-    print(json.dumps({
-        "hookSpecificOutput": {
-            "hookEventName": "PreToolUse",
-            "permissionDecision": decision,
-            "permissionDecisionReason": reason
-        }
-    }))
+    if decision == "ask":
+        # Abstain: no permissionDecision → Claude Code's default flow takes over
+        print(json.dumps({
+            "hookSpecificOutput": {
+                "hookEventName": "PreToolUse",
+                "additionalContext": f"[gavel] {reason}"
+            }
+        }))
+    else:
+        print(json.dumps({
+            "hookSpecificOutput": {
+                "hookEventName": "PreToolUse",
+                "permissionDecision": decision,
+                "permissionDecisionReason": reason
+            }
+        }))
     sys.exit(0)
 
 

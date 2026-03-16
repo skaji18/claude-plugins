@@ -13,14 +13,25 @@ from gavel.path_check import detect_project_dir, check_path_containment
 
 
 def _output(decision, reason):
-    """Output hook decision JSON and exit."""
-    print(json.dumps({
-        "hookSpecificOutput": {
-            "hookEventName": "PreToolUse",
-            "permissionDecision": decision,
-            "permissionDecisionReason": reason
-        }
-    }))
+    """Output hook decision JSON and exit.
+
+    ask → abstain (delegate to Claude Code's normal permission flow).
+    """
+    if decision == "ask":
+        print(json.dumps({
+            "hookSpecificOutput": {
+                "hookEventName": "PreToolUse",
+                "additionalContext": f"[gavel] {reason}"
+            }
+        }))
+    else:
+        print(json.dumps({
+            "hookSpecificOutput": {
+                "hookEventName": "PreToolUse",
+                "permissionDecision": decision,
+                "permissionDecisionReason": reason
+            }
+        }))
     sys.exit(0)
 
 
