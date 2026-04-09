@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ガントチャート</title>
+  <script src="https://cdn.jsdelivr.net/npm/js-yaml@4.1.0/dist/js-yaml.min.js"
+    integrity="sha256-Ewipm0AQXMF7VtEJTpgfVOiTe0SOQV0vFStz9jmGzY="
+    crossorigin="anonymous"></script>
+  <style>
+    :root {
+      --bar-height: 24px;
+      --row-height: 36px;
+      --header-height: 48px;
+      --sidebar-width: 320px;
+      --color-bar: #4a90d9;
+      --color-critical: #e74c3c;
+      --color-progress: #2ecc71;
+      --color-milestone: #f39c12;
+      --color-today: #e74c3c;
+      --color-warning: #e74c3c;
+      --color-grid: #e8e8e8;
+      --color-group-bg: #f0f0f0;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: -apple-system, BlinkMacSystemFont, sans-serif; font-size: 13px; color: #333; }
+    #controls { padding: 12px 16px; border-bottom: 1px solid #ddd; display: flex; gap: 12px; align-items: center; }
+    #controls button { padding: 4px 12px; cursor: pointer; border: 1px solid #ccc; border-radius: 4px; background: #fff; }
+    #controls button.active { background: #4a90d9; color: #fff; border-color: #4a90d9; }
+    #project-name { font-weight: bold; font-size: 16px; }
+    #chart-container { display: flex; overflow: auto; position: relative; }
+    #sidebar { min-width: var(--sidebar-width); max-width: var(--sidebar-width); border-right: 2px solid #ccc; }
+    #sidebar-header { height: var(--header-height); border-bottom: 1px solid #ddd; padding: 0 8px; display: flex; align-items: center; font-weight: bold; }
+    .sidebar-row { height: var(--row-height); display: flex; align-items: center; padding: 0 8px; border-bottom: 1px solid #f0f0f0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .sidebar-row.warning { outline: 2px solid var(--color-warning); outline-offset: -2px; }
+    .sidebar-group { height: var(--row-height); display: flex; align-items: center; padding: 0 8px; background: var(--color-group-bg); font-weight: bold; cursor: pointer; border-bottom: 1px solid #ddd; }
+    .sidebar-group::before { content: "▼"; margin-right: 6px; font-size: 10px; transition: transform 0.2s; }
+    .sidebar-group.collapsed::before { transform: rotate(-90deg); }
+    .task-name { margin-right: 8px; }
+    .task-assignee { color: #888; font-size: 11px; }
+    #timeline { flex: 1; overflow-x: auto; position: relative; }
+    #timeline-header { height: var(--header-height); border-bottom: 1px solid #ddd; position: relative; }
+    .header-cell { position: absolute; height: 100%; display: flex; align-items: center; justify-content: center; border-right: 1px solid var(--color-grid); font-size: 11px; color: #666; }
+    #timeline-body { position: relative; }
+    .timeline-row { height: var(--row-height); position: relative; border-bottom: 1px solid #f0f0f0; }
+    .timeline-row.group-row { background: var(--color-group-bg); }
+    .task-bar { position: absolute; height: var(--bar-height); top: calc((var(--row-height) - var(--bar-height)) / 2); border-radius: 3px; background: var(--color-bar); min-width: 2px; }
+    .task-bar.critical { background: var(--color-critical); }
+    .task-bar.warning { outline: 2px solid var(--color-warning); outline-offset: 1px; }
+    .progress-fill { height: 100%; border-radius: 3px; background: var(--color-progress); opacity: 0.7; }
+    .milestone-marker { position: absolute; top: calc((var(--row-height) - 16px) / 2); width: 16px; height: 16px; background: var(--color-milestone); transform: rotate(45deg); }
+    .today-line { position: absolute; top: 0; bottom: 0; width: 2px; background: var(--color-today); z-index: 10; pointer-events: none; }
+    .today-label { position: absolute; top: 2px; font-size: 10px; color: var(--color-today); white-space: nowrap; transform: translateX(-50%); }
+    .grid-line { position: absolute; top: 0; bottom: 0; width: 1px; background: var(--color-grid); pointer-events: none; }
+    svg.arrows { position: absolute; top: 0; left: 0; pointer-events: none; }
+    svg.arrows line { stroke: #999; stroke-width: 1.5; }
+    svg.arrows polygon { fill: #999; }
+    .hidden { display: none; }
+  </style>
+</head>
+<body>
+  <div id="controls">
+    <span id="project-name"></span>
+    <button id="btn-day" class="active">日</button>
+    <button id="btn-week">週</button>
+  </div>
+  <div id="chart-container">
+    <div id="sidebar">
+      <div id="sidebar-header">タスク</div>
+      <div id="sidebar-rows"></div>
+    </div>
+    <div id="timeline">
+      <div id="timeline-header"></div>
+      <div id="timeline-body"></div>
+    </div>
+  </div>
+  <script src="gantt-core.js"></script>
+  <script src="gantt-render.js"></script>
+  <script>
+    GanttRender.init('gantt.yaml');
+  </script>
+</body>
+</html>

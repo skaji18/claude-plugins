@@ -1,0 +1,47 @@
+project:
+  name: "サンプルプロジェクト"
+
+tasks:
+  - id: "design"
+    name: "設計"
+    assignee: "田中"
+    effort: 3
+    start_date: "2026-04-10"
+    end_date: "2026-04-14"
+    progress: 0
+    depends_on: []
+    group: "計画"
+    milestone: false
+
+  - id: "impl"
+    name: "実装"
+    assignee: "佐藤"
+    effort: 5
+    start_date: "2026-04-15"
+    end_date: "2026-04-21"
+    progress: 0
+    depends_on: ["design"]
+    group: "開発"
+    milestone: false
+
+  - id: "test"
+    name: "テスト"
+    assignee: "鈴木"
+    effort: 3
+    start_date: "2026-04-22"
+    end_date: "2026-04-25"
+    progress: 0
+    depends_on: ["impl"]
+    group: "QA"
+    milestone: false
+
+  - id: "release"
+    name: "リリース"
+    assignee: "田中"
+    effort: 1
+    start_date: "2026-04-28"
+    end_date: "2026-04-28"
+    progress: 0
+    depends_on: ["test"]
+    group: "リリース"
+    milestone: true

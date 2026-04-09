@@ -1,0 +1,9 @@
+{
+  "name": "gantt-viewer",
+  "version": "1.0.0",
+  "description": "業務用ガントチャートビューア。YAML でタスクデータを管理し、HTML で閲覧、CLI で整合性チェック・サマリー表示を行う Claude Code プラグイン。",
+  "author": {
+    "name": "skaji18",
+    "email": "skaji18@users.noreply.github.com"
+  }
+}

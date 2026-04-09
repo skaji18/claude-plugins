@@ -1,0 +1,181 @@
+/* global jsyaml */
+'use strict';
+
+const GanttCore = (() => {
+  const MS_PER_DAY = 86400000;
+
+  function parseDate(str) {
+    return new Date(str + 'T00:00:00');
+  }
+
+  function daysBetween(d1, d2) {
+    return Math.round((d2.getTime() - d1.getTime()) / MS_PER_DAY);
+  }
+
+  function formatDate(date) {
+    const y = date.getFullYear();
+    const m = String(date.getMonth() + 1).padStart(2, '0');
+    const d = String(date.getDate()).padStart(2, '0');
+    return `${y}-${m}-${d}`;
+  }
+
+  function addDays(date, n) {
+    return new Date(date.getTime() + n * MS_PER_DAY);
+  }
+
+  async function loadYaml(url) {
+    const res = await fetch(url);
+    if (!res.ok) throw new Error(`Failed to load ${url}: ${res.status}`);
+    const text = await res.text();
+    return jsyaml.load(text);
+  }
+
+  function topologicalSort(tasks) {
+    const taskMap = new Map();
+    const inDegree = new Map();
+    const adj = new Map();
+
+    for (const t of tasks) {
+      taskMap.set(t.id, t);
+      inDegree.set(t.id, 0);
+      adj.set(t.id, []);
+    }
+
+    for (const t of tasks) {
+      for (const dep of t.depends_on) {
+        if (!taskMap.has(dep)) continue;
+        adj.get(dep).push(t.id);
+        inDegree.set(t.id, inDegree.get(t.id) + 1);
+      }
+    }
+
+    const queue = [];
+    for (const [id, deg] of inDegree) {
+      if (deg === 0) queue.push(id);
+    }
+
+    const sorted = [];
+    while (queue.length > 0) {
+      const id = queue.shift();
+      sorted.push(id);
+      for (const nb of adj.get(id)) {
+        const nd = inDegree.get(nb) - 1;
+        inDegree.set(nb, nd);
+        if (nd === 0) queue.push(nb);
+      }
+    }
+
+    if (sorted.length !== tasks.length) {
+      throw new Error('Circular dependency detected');
+    }
+    return sorted;
+  }
+
+  function calculateCriticalPath(tasks) {
+    const sorted = topologicalSort(tasks);
+    const taskMap = new Map();
+    for (const t of tasks) taskMap.set(t.id, t);
+
+    const dist = new Map();
+    const prev = new Map();
+
+    for (const id of sorted) {
+      const t = taskMap.get(id);
+      const start = parseDate(t.start_date);
+      const end = parseDate(t.end_date);
+      const duration = daysBetween(start, end) + 1;
+
+      let maxPrev = 0;
+      let maxPrevId = null;
+      for (const dep of t.depends_on) {
+        if (!dist.has(dep)) continue;
+        if (dist.get(dep) > maxPrev) {
+          maxPrev = dist.get(dep);
+          maxPrevId = dep;
+        }
+      }
+
+      dist.set(id, maxPrev + duration);
+      prev.set(id, maxPrevId);
+    }
+
+    let endId = null;
+    let maxDist = 0;
+    for (const [id, d] of dist) {
+      if (d > maxDist) {
+        maxDist = d;
+        endId = id;
+      }
+    }
+
+    const path = [];
+    let cur = endId;
+    while (cur !== null) {
+      path.unshift(cur);
+      cur = prev.get(cur);
+    }
+
+    return { path: new Set(path), orderedPath: path, totalDays: maxDist };
+  }
+
+  function checkViolations(tasks) {
+    const taskMap = new Map();
+    for (const t of tasks) taskMap.set(t.id, t);
+    const violations = new Set();
+
+    for (const t of tasks) {
+      if (t.start_date > t.end_date) {
+        violations.add(t.id);
+        continue;
+      }
+      for (const dep of t.depends_on) {
+        const d = taskMap.get(dep);
+        if (!d) { violations.add(t.id); continue; }
+        if (t.start_date <= d.end_date) violations.add(t.id);
+      }
+    }
+
+    return violations;
+  }
+
+  function getDateRange(tasks) {
+    let min = parseDate(tasks[0].start_date);
+    let max = parseDate(tasks[0].end_date);
+    for (const t of tasks) {
+      const s = parseDate(t.start_date);
+      const e = parseDate(t.end_date);
+      if (s < min) min = s;
+      if (e > max) max = e;
+    }
+    return { start: addDays(min, -2), end: addDays(max, 2) };
+  }
+
+  function groupTasks(tasks) {
+    const groups = [];
+    const groupMap = new Map();
+
+    for (const t of tasks) {
+      const g = t.group;
+      if (!groupMap.has(g)) {
+        const entry = { name: g, tasks: [] };
+        groupMap.set(g, entry);
+        groups.push(entry);
+      }
+      groupMap.get(g).tasks.push(t);
+    }
+
+    return groups;
+  }
+
+  return {
+    parseDate,
+    daysBetween,
+    formatDate,
+    addDays,
+    loadYaml,
+    calculateCriticalPath,
+    checkViolations,
+    getDateRange,
+    groupTasks,
+  };
+})();
