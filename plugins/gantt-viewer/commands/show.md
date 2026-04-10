@@ -11,4 +11,6 @@ allowed-tools: [Bash]
 node "${CLAUDE_PLUGIN_ROOT}/scripts/show.js" "$1"
 ```
 
+表示内容にはタスク数・進捗率・クリティカルパス・遅延タスクに加え、担当者別の工数合計（effort サマリー）を含みます。
+
 結果をそのままユーザーに表示してください。

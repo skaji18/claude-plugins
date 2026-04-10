@@ -13,6 +13,9 @@ A Claude Code plugin that provides interactive Gantt chart visualization from YA
 - **Dependency arrows**: Renders dependency links between tasks; double-click to highlight a full dependency chain
 - **Milestone tracking**: Diamond markers with remaining-days badges
 - **Responsive design**: Drawer-based sidebar and pinch-zoom on mobile devices
+- **Actual vs. planned toggle**: Switch to overlay actual bars (solid) on planned bars (faded/dashed) for schedule comparison
+- **Effort visualization**: Effort labels on Gantt bars and workload bars, with total effort shown in the summary panel
+- **Enhanced popovers**: Display effort, actual dates, actual effort, blocked status, tags, and notes on hover
 - **CLI checks**: `check` command for YAML validation, `show` command for text-based summary
 
 ## Installation
@@ -42,8 +45,11 @@ Outputs a text-based status summary of the project including task count, overall
 Runs integrity checks on the YAML file and reports errors/warnings:
 
 - Dependency violations (task starts before its dependency ends)
+- Circular dependency detection
 - Date contradictions (start_date > end_date)
 - Invalid references (depends_on references a non-existent ID)
+- Assignee reference check (assignee must exist in `members` when defined)
+- Group reference check (group must exist in `groups` when defined)
 - Delayed tasks (end_date past today with progress < 100%)
 - Critical path calculation
 
@@ -52,6 +58,9 @@ Runs integrity checks on the YAML file and reports errors/warnings:
 ```yaml
 project:
   name: "Project Name"
+
+members: ["Alice", "Bob"]   # string[] -- assignee definitions (enables reference check)
+groups: ["Backend", "Frontend"] # string[] -- group definitions (enables reference check)
 
 tasks:
   - id: "task-id"           # string -- unique task identifier
@@ -64,9 +73,22 @@ tasks:
     depends_on: ["other-id"] # string[] -- IDs of prerequisite tasks
     group: "Group Name"      # string -- grouping label (displayed as collapsible sections)
     milestone: false         # boolean -- true renders a diamond marker instead of a bar
+    blocked: false           # boolean -- marks the task as blocked by an external factor
+    notes: ""                # string -- free-text notes (e.g. block reason)
+    tags: ["mvp"]            # string[] -- classification labels independent of group
+    actual_start_date: "2026-04-02" # string (YYYY-MM-DD) -- actual start date
+    actual_end_date: "2026-04-09"   # string (YYYY-MM-DD) -- actual end date
+    actual_effort: 4         # number -- actual effort in person-days
 ```
 
-### Field details
+### Top-level fields
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `members` | string[] | Assignee whitelist. When defined, `assignee` values are validated against this list |
+| `groups` | string[] | Group whitelist. When defined, `group` values are validated against this list |
+
+### Task fields
 
 | Field | Type | Description |
 |-------|------|-------------|
@@ -80,6 +102,12 @@ tasks:
 | `depends_on` | string[] | List of task IDs that must complete before this task starts |
 | `group` | string | Logical grouping; tasks with the same group are displayed together |
 | `milestone` | boolean | When `true`, displayed as a diamond marker on the chart |
+| `blocked` | boolean | When `true`, indicates the task is blocked by an external factor |
+| `notes` | string | Free-text notes such as block reason or remarks |
+| `tags` | string[] | Classification labels independent of `group` |
+| `actual_start_date` | string | Actual start date in `YYYY-MM-DD` format |
+| `actual_end_date` | string | Actual end date in `YYYY-MM-DD` format |
+| `actual_effort` | number | Actual effort in person-days |
 
 ## Viewing the Chart
 
