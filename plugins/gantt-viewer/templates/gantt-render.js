@@ -739,6 +739,8 @@ const GanttRender = (() => {
 
     state = {
       tasks: data.tasks,
+      members: data.members || null,
+      groups: data.groups || null,
       dateRange: GanttCore.getDateRange(data.tasks),
       criticalPath: cp.path,
       violations: GanttCore.checkViolations(data.tasks),

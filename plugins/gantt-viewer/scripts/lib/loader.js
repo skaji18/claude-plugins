@@ -42,6 +42,35 @@ function validateTask(task, index) {
   if (!Array.isArray(task.depends_on)) {
     throw new Error(`Task #${index + 1} ("${task.id}"): "depends_on" must be an array`);
   }
+
+  // Optional fields
+  if (task.blocked !== undefined && typeof task.blocked !== 'boolean') {
+    throw new Error(`Task #${index + 1} ("${task.id}"): "blocked" must be a boolean`);
+  }
+
+  if (task.notes !== undefined && typeof task.notes !== 'string') {
+    throw new Error(`Task #${index + 1} ("${task.id}"): "notes" must be a string`);
+  }
+
+  if (task.tags !== undefined) {
+    if (!Array.isArray(task.tags) || !task.tags.every((t) => typeof t === 'string')) {
+      throw new Error(`Task #${index + 1} ("${task.id}"): "tags" must be an array of strings`);
+    }
+  }
+
+  if (task.actual_start_date !== undefined && !DATE_PATTERN.test(task.actual_start_date)) {
+    throw new Error(`Task #${index + 1} ("${task.id}"): "actual_start_date" must be YYYY-MM-DD format`);
+  }
+
+  if (task.actual_end_date !== undefined && !DATE_PATTERN.test(task.actual_end_date)) {
+    throw new Error(`Task #${index + 1} ("${task.id}"): "actual_end_date" must be YYYY-MM-DD format`);
+  }
+
+  if (task.actual_effort !== undefined) {
+    if (typeof task.actual_effort !== 'number' || task.actual_effort <= 0) {
+      throw new Error(`Task #${index + 1} ("${task.id}"): "actual_effort" must be a positive number`);
+    }
+  }
 }
 
 function validateUniqueIds(tasks) {
@@ -78,8 +107,44 @@ export function loadTasks(filePath) {
     throw new Error('"tasks" must contain at least one task');
   }
 
+  // Parse optional members/groups sections
+  let members = null;
+  if (data.members !== undefined) {
+    if (!Array.isArray(data.members) || !data.members.every((m) => typeof m === 'string')) {
+      throw new Error('"members" must be an array of strings');
+    }
+    members = data.members;
+  }
+
+  let groups = null;
+  if (data.groups !== undefined) {
+    if (!Array.isArray(data.groups) || !data.groups.every((g) => typeof g === 'string')) {
+      throw new Error('"groups" must be an array of strings');
+    }
+    groups = data.groups;
+  }
+
   data.tasks.forEach((task, i) => validateTask(task, i));
   validateUniqueIds(data.tasks);
 
-  return { project: data.project, tasks: data.tasks };
+  // Reference checks against members/groups definitions
+  if (members) {
+    const memberSet = new Set(members);
+    for (const task of data.tasks) {
+      if (!memberSet.has(task.assignee)) {
+        throw new Error(`Task "${task.id}": assignee "${task.assignee}" is not in members list`);
+      }
+    }
+  }
+
+  if (groups) {
+    const groupSet = new Set(groups);
+    for (const task of data.tasks) {
+      if (!groupSet.has(task.group)) {
+        throw new Error(`Task "${task.id}": group "${task.group}" is not in groups list`);
+      }
+    }
+  }
+
+  return { project: data.project, tasks: data.tasks, members, groups };
 }

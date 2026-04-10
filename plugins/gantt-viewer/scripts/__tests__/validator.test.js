@@ -6,6 +6,7 @@ import {
   checkDateContradictions,
   checkInvalidReferences,
   checkDelayedTasks,
+  checkCircularDependencies,
   runAllChecks,
 } from '../lib/validator.js';
 
@@ -26,6 +27,56 @@ function makeTask(overrides) {
 }
 
 describe('validator', () => {
+  describe('checkCircularDependencies', () => {
+    it('should return empty array when no circular dependencies exist', () => {
+      // Given
+      const tasks = [
+        makeTask({ id: 'a', depends_on: [] }),
+        makeTask({ id: 'b', depends_on: ['a'] }),
+        makeTask({ id: 'c', depends_on: ['b'] }),
+      ];
+
+      // When
+      const results = checkCircularDependencies(tasks);
+
+      // Then
+      assert.equal(results.length, 0);
+    });
+
+    it('should detect A → B → A circular dependency', () => {
+      // Given
+      const tasks = [
+        makeTask({ id: 'a', depends_on: ['b'] }),
+        makeTask({ id: 'b', depends_on: ['a'] }),
+      ];
+
+      // When
+      const results = checkCircularDependencies(tasks);
+
+      // Then
+      assert.ok(results.length >= 1);
+      assert.equal(results[0].level, 'ERROR');
+      assert.equal(results[0].type, 'circular_dependency');
+    });
+
+    it('should detect longer circular chain A → B → C → A', () => {
+      // Given
+      const tasks = [
+        makeTask({ id: 'a', depends_on: ['c'] }),
+        makeTask({ id: 'b', depends_on: ['a'] }),
+        makeTask({ id: 'c', depends_on: ['b'] }),
+      ];
+
+      // When
+      const results = checkCircularDependencies(tasks);
+
+      // Then
+      assert.ok(results.length >= 1);
+      assert.equal(results[0].level, 'ERROR');
+      assert.equal(results[0].type, 'circular_dependency');
+    });
+  });
+
   describe('checkDependencyViolations', () => {
     it('should return empty array when no dependency violations exist', () => {
       // Given
@@ -288,6 +339,22 @@ describe('validator', () => {
 
       // Then
       assert.equal(results.length, 0);
+    });
+
+    it('should include circular dependency results', () => {
+      // Given
+      const today = '2026-04-01';
+      const tasks = [
+        makeTask({ id: 'a', start_date: '2026-04-10', end_date: '2026-04-14', depends_on: ['b'] }),
+        makeTask({ id: 'b', start_date: '2026-04-10', end_date: '2026-04-14', depends_on: ['a'] }),
+      ];
+
+      // When
+      const results = runAllChecks(tasks, today);
+
+      // Then
+      const circularResults = results.filter((r) => r.type === 'circular_dependency');
+      assert.ok(circularResults.length >= 1);
     });
 
     it('should not include critical path info in results', () => {

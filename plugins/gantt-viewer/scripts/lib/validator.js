@@ -65,6 +65,56 @@ export function checkInvalidReferences(tasks) {
   return results;
 }
 
+export function checkCircularDependencies(tasks) {
+  const results = [];
+  const taskMap = new Map();
+  for (const task of tasks) {
+    taskMap.set(task.id, task);
+  }
+
+  const visited = new Set();
+  const inStack = new Set();
+
+  function dfs(id, path) {
+    if (inStack.has(id)) {
+      const cycleStart = path.indexOf(id);
+      const cycle = path.slice(cycleStart).concat(id);
+      results.push({
+        level: 'ERROR',
+        type: 'circular_dependency',
+        taskId: id,
+        message: `循環依存を検出: ${cycle.join(' → ')}`,
+      });
+      return;
+    }
+    if (visited.has(id)) return;
+
+    visited.add(id);
+    inStack.add(id);
+    path.push(id);
+
+    const task = taskMap.get(id);
+    if (task) {
+      for (const depId of task.depends_on) {
+        if (taskMap.has(depId)) {
+          dfs(depId, path);
+        }
+      }
+    }
+
+    path.pop();
+    inStack.delete(id);
+  }
+
+  for (const task of tasks) {
+    if (!visited.has(task.id)) {
+      dfs(task.id, []);
+    }
+  }
+
+  return results;
+}
+
 export function checkDelayedTasks(tasks, today) {
   const results = [];
 
@@ -84,6 +134,7 @@ export function checkDelayedTasks(tasks, today) {
 
 export function runAllChecks(tasks, today) {
   return [
+    ...checkCircularDependencies(tasks),
     ...checkDependencyViolations(tasks),
     ...checkDateContradictions(tasks),
     ...checkInvalidReferences(tasks),

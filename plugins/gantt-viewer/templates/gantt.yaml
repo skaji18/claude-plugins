@@ -1,6 +1,20 @@
 project:
   name: "2026 Q2 統合開発プログラム"
 
+members:
+  - "田中"
+  - "中村"
+  - "佐藤"
+  - "山田"
+  - "鈴木"
+  - "高橋"
+  - "伊藤"
+
+groups:
+  - "EC サイトリニューアル"
+  - "モバイルアプリ開発"
+  - "インフラ移行"
+
 tasks:
   # ── EC サイトリニューアル ──────────────────────────────
   - id: "ec-req"
@@ -13,6 +27,9 @@ tasks:
     depends_on: []
     group: "EC サイトリニューアル"
     milestone: false
+    actual_start_date: "2026-02-02"
+    actual_end_date: "2026-02-05"
+    actual_effort: 4
 
   - id: "ec-uidesign"
     name: "EC UI デザイン"
@@ -46,6 +63,9 @@ tasks:
     depends_on: ["ec-uidesign"]
     group: "EC サイトリニューアル"
     milestone: false
+    actual_start_date: "2026-02-24"
+    actual_effort: 10
+    tags: ["frontend", "react"]
 
   - id: "ec-payment"
     name: "決済システム連携"
@@ -57,6 +77,9 @@ tasks:
     depends_on: ["ec-api"]
     group: "EC サイトリニューアル"
     milestone: false
+    blocked: true
+    notes: "外部決済プロバイダのAPI仕様変更待ち"
+    tags: ["payment", "external-dependency"]
 
   - id: "ec-integ"
     name: "EC 結合テスト"
@@ -135,6 +158,8 @@ tasks:
     depends_on: ["app-design"]
     group: "モバイルアプリ開発"
     milestone: false
+    notes: "Kotlin Multiplatform への移行を検討中"
+    tags: ["android", "kotlin"]
 
   - id: "app-push"
     name: "プッシュ通知基盤実装"
@@ -235,6 +260,10 @@ tasks:
     depends_on: ["infra-design"]
     group: "インフラ移行"
     milestone: false
+    actual_start_date: "2026-02-23"
+    actual_end_date: "2026-03-12"
+    actual_effort: 11
+    tags: ["terraform", "infrastructure"]
 
   - id: "infra-cicd"
     name: "CI/CD パイプライン移行"
