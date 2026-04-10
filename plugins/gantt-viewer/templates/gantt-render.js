@@ -8,6 +8,8 @@ const GanttRender = (() => {
   const COL_WIDTH_WEEK = 100;
   const COL_WIDTH_MONTH = 6;
 
+  const ZOOM_STEPS = [0.5, 0.75, 1, 1.5, 2, 3];
+
   const GROUP_COLORS = [
     'hsl(210, 70%, 50%)',
     'hsl(150, 70%, 40%)',
@@ -16,10 +18,14 @@ const GanttRender = (() => {
     'hsl(270, 60%, 50%)',
   ];
 
-  function getColWidth() {
+  function getBaseColWidth() {
     if (state.mode === 'week') return COL_WIDTH_WEEK;
     if (state.mode === 'month') return COL_WIDTH_MONTH;
     return COL_WIDTH_DAY;
+  }
+
+  function getColWidth() {
+    return getBaseColWidth() * state.zoomFactor;
   }
 
   function buildRows() {
@@ -239,6 +245,22 @@ const GanttRender = (() => {
           progressText.textContent = t.progress + '%';
           bar.appendChild(progressText);
 
+          // Bar label (task name, shown on mobile via CSS)
+          const barWidth = endX - startX;
+          const barLabel = document.createElement('span');
+          barLabel.className = 'bar-label';
+          barLabel.textContent = t.name;
+          if (barWidth >= 80) {
+            // Long bar: label inside
+            barLabel.classList.add('bar-label-inside');
+            bar.appendChild(barLabel);
+          } else {
+            // Short bar: label outside (right of bar)
+            barLabel.classList.add('bar-label-outside');
+            barLabel.style.left = (startX + barWidth + 4) + 'px';
+            rowDiv.appendChild(barLabel);
+          }
+
           rowDiv.appendChild(bar);
         }
 
@@ -370,12 +392,39 @@ const GanttRender = (() => {
     }
   }
 
+  function updateStickyOffsets() {
+    const controls = document.getElementById('controls');
+    const summary = document.getElementById('summary-panel');
+    const controlsH = controls.offsetHeight;
+    const summaryH = summary.offsetHeight;
+    document.documentElement.style.setProperty('--controls-height', controlsH + 'px');
+    document.documentElement.style.setProperty('--sticky-header-offset', (controlsH + summaryH) + 'px');
+  }
+
+  function setupScrollSync() {
+    const chartContainer = document.getElementById('chart-container');
+    const headerWrap = document.getElementById('timeline-header-wrap');
+    if (!chartContainer || !headerWrap) return;
+
+    // Remove previous listener if any
+    if (state._scrollSyncHandler) {
+      chartContainer.removeEventListener('scroll', state._scrollSyncHandler);
+    }
+
+    state._scrollSyncHandler = () => {
+      headerWrap.scrollLeft = chartContainer.scrollLeft;
+    };
+
+    chartContainer.addEventListener('scroll', state._scrollSyncHandler);
+  }
+
   function render() {
     state.rows = buildRows();
     renderSidebar();
     renderTimelineHeader();
     renderTimelineBody();
     renderSummary();
+    updateStickyOffsets();
   }
 
   // Public API
@@ -456,8 +505,8 @@ const GanttRender = (() => {
     today.setHours(0, 0, 0, 0);
     if (today < state.dateRange.start || today > state.dateRange.end) return;
     const x = dayToX(today);
-    const timeline = document.getElementById('timeline');
-    timeline.scrollLeft = Math.max(0, x - timeline.clientWidth / 2);
+    const container = document.getElementById('chart-container');
+    container.scrollLeft = Math.max(0, x - container.clientWidth / 2);
   }
 
   function expandAll() {
@@ -517,6 +566,34 @@ const GanttRender = (() => {
     });
   }
 
+  function updateZoomLabel() {
+    const label = document.getElementById('zoom-label');
+    if (label) {
+      const display = state.zoomFactor === Math.floor(state.zoomFactor)
+        ? state.zoomFactor + 'x'
+        : state.zoomFactor + 'x';
+      label.textContent = display;
+    }
+  }
+
+  function zoomIn() {
+    const idx = ZOOM_STEPS.indexOf(state.zoomFactor);
+    if (idx < ZOOM_STEPS.length - 1) {
+      state.zoomFactor = ZOOM_STEPS[idx + 1];
+      updateZoomLabel();
+      render();
+    }
+  }
+
+  function zoomOut() {
+    const idx = ZOOM_STEPS.indexOf(state.zoomFactor);
+    if (idx > 0) {
+      state.zoomFactor = ZOOM_STEPS[idx - 1];
+      updateZoomLabel();
+      render();
+    }
+  }
+
   function clearHighlights() {
     state.highlightedChain = null;
     document.querySelectorAll('.dep-highlight').forEach(el => el.classList.remove('dep-highlight'));
@@ -555,6 +632,7 @@ const GanttRender = (() => {
       loadViewActive: false,
       milestoneDays: GanttCore.milestoneDaysLeft(data.tasks, today),
       highlightedChain: null,
+      zoomFactor: 1.0,
     };
 
     // Set up group colors
@@ -570,6 +648,10 @@ const GanttRender = (() => {
     document.getElementById('btn-month').addEventListener('click', () => setMode('month'));
 
     render();
+    setupScrollSync();
+
+    // Recalculate sticky offsets on resize (controls may wrap)
+    window.addEventListener('resize', updateStickyOffsets);
 
     // Bind UI events after initial render
     if (typeof GanttUI !== 'undefined') {
@@ -589,5 +671,7 @@ const GanttRender = (() => {
     clearHighlights,
     render,
     setMode,
+    zoomIn,
+    zoomOut,
   };
 })();

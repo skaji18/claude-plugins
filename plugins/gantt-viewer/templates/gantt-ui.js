@@ -3,8 +3,6 @@
 
 const GanttUI = (() => {
   let _state = null;
-  let _pinchStartDist = 0;
-  let _pinchZoomFactor = 1.0;
   let _touchStartX = 0;
   let _touchStartY = 0;
   let _drawerSwipeActive = false;
@@ -19,7 +17,7 @@ const GanttUI = (() => {
     bindDrawerEvents();
     bindPopoverEvents();
     bindTooltipEvents();
-    bindPinchZoom();
+    bindZoomButtons();
     bindDependencyHighlight();
   }
 
@@ -175,14 +173,18 @@ const GanttUI = (() => {
     `;
 
     // Position: try to keep within viewport
+    popover.style.left = '0px';
+    popover.style.top = '0px';
     popover.style.display = 'block';
     const rect = popover.getBoundingClientRect();
     let left = x + 10;
     let top = y + 10;
     if (left + rect.width > window.innerWidth) left = x - rect.width - 10;
     if (top + rect.height > window.innerHeight) top = y - rect.height - 10;
-    popover.style.left = Math.max(4, left) + 'px';
-    popover.style.top = Math.max(4, top) + 'px';
+    left = Math.max(4, Math.min(left, window.innerWidth - rect.width - 4));
+    top = Math.max(4, Math.min(top, window.innerHeight - rect.height - 4));
+    popover.style.left = left + 'px';
+    popover.style.top = top + 'px';
   }
 
   function hidePopover() {
@@ -225,43 +227,26 @@ const GanttUI = (() => {
 
     body.addEventListener('mousemove', (e) => {
       if (tooltip.style.display === 'block') {
-        tooltip.style.left = (e.clientX + 12) + 'px';
-        tooltip.style.top = (e.clientY - 28) + 'px';
+        const ttRect = tooltip.getBoundingClientRect();
+        let left = e.clientX + 12;
+        let top = e.clientY - 28;
+        if (left + ttRect.width > window.innerWidth) left = e.clientX - ttRect.width - 12;
+        if (top < 0) top = e.clientY + 16;
+        tooltip.style.left = left + 'px';
+        tooltip.style.top = top + 'px';
       }
     });
   }
 
-  // --- Pinch Zoom ---
+  // --- Zoom Buttons ---
 
-  function bindPinchZoom() {
-    const body = document.getElementById('timeline-body');
-
-    body.addEventListener('touchstart', (e) => {
-      if (e.touches.length === 2) {
-        _pinchStartDist = getTouchDist(e.touches);
-      }
-    }, { passive: true });
-
-    body.addEventListener('touchmove', (e) => {
-      if (e.touches.length === 2) {
-        const dist = getTouchDist(e.touches);
-        const scale = dist / _pinchStartDist;
-        _pinchZoomFactor = Math.min(3.0, Math.max(0.5, _pinchZoomFactor * scale));
-        body.style.transform = `scale(${_pinchZoomFactor})`;
-        body.classList.add('pinch-zoom');
-        _pinchStartDist = dist;
-      }
-    }, { passive: true });
-
-    body.addEventListener('touchend', () => {
-      // Keep the zoom level applied
-    }, { passive: true });
-  }
-
-  function getTouchDist(touches) {
-    const dx = touches[0].clientX - touches[1].clientX;
-    const dy = touches[0].clientY - touches[1].clientY;
-    return Math.sqrt(dx * dx + dy * dy);
+  function bindZoomButtons() {
+    document.getElementById('btn-zoom-in').addEventListener('click', () => {
+      GanttRender.zoomIn();
+    });
+    document.getElementById('btn-zoom-out').addEventListener('click', () => {
+      GanttRender.zoomOut();
+    });
   }
 
   // --- Dependency highlight ---

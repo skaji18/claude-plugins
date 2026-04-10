@@ -1,47 +1,292 @@
 project:
-  name: "サンプルプロジェクト"
+  name: "2026 Q2 統合開発プログラム"
 
 tasks:
-  - id: "design"
-    name: "設計"
+  # ── EC サイトリニューアル ──────────────────────────────
+  - id: "ec-req"
+    name: "EC 要件定義"
     assignee: "田中"
-    effort: 3
-    start_date: "2026-04-10"
-    end_date: "2026-04-14"
-    progress: 0
-    depends_on: []
-    group: "計画"
-    milestone: false
-
-  - id: "impl"
-    name: "実装"
-    assignee: "佐藤"
     effort: 5
-    start_date: "2026-04-15"
-    end_date: "2026-04-21"
-    progress: 0
-    depends_on: ["design"]
-    group: "開発"
+    start_date: "2026-02-02"
+    end_date: "2026-02-06"
+    progress: 100
+    depends_on: []
+    group: "EC サイトリニューアル"
     milestone: false
 
-  - id: "test"
-    name: "テスト"
+  - id: "ec-uidesign"
+    name: "EC UI デザイン"
+    assignee: "中村"
+    effort: 8
+    start_date: "2026-02-09"
+    end_date: "2026-02-20"
+    progress: 100
+    depends_on: ["ec-req"]
+    group: "EC サイトリニューアル"
+    milestone: false
+
+  - id: "ec-api"
+    name: "EC バックエンド API 開発"
+    assignee: "佐藤"
+    effort: 15
+    start_date: "2026-02-09"
+    end_date: "2026-03-06"
+    progress: 100
+    depends_on: ["ec-req"]
+    group: "EC サイトリニューアル"
+    milestone: false
+
+  - id: "ec-front"
+    name: "EC フロントエンド実装"
+    assignee: "山田"
+    effort: 12
+    start_date: "2026-02-23"
+    end_date: "2026-03-13"
+    progress: 85
+    depends_on: ["ec-uidesign"]
+    group: "EC サイトリニューアル"
+    milestone: false
+
+  - id: "ec-payment"
+    name: "決済システム連携"
+    assignee: "佐藤"
+    effort: 8
+    start_date: "2026-03-09"
+    end_date: "2026-03-20"
+    progress: 60
+    depends_on: ["ec-api"]
+    group: "EC サイトリニューアル"
+    milestone: false
+
+  - id: "ec-integ"
+    name: "EC 結合テスト"
     assignee: "鈴木"
-    effort: 3
-    start_date: "2026-04-22"
-    end_date: "2026-04-25"
-    progress: 0
-    depends_on: ["impl"]
-    group: "QA"
+    effort: 8
+    start_date: "2026-03-23"
+    end_date: "2026-04-03"
+    progress: 40
+    depends_on: ["ec-front", "ec-payment"]
+    group: "EC サイトリニューアル"
     milestone: false
 
-  - id: "release"
-    name: "リリース"
+  - id: "ec-perf"
+    name: "EC 負荷テスト・チューニング"
+    assignee: "高橋"
+    effort: 5
+    start_date: "2026-04-06"
+    end_date: "2026-04-10"
+    progress: 10
+    depends_on: ["ec-integ"]
+    group: "EC サイトリニューアル"
+    milestone: false
+
+  - id: "ec-release"
+    name: "EC サイトリリース"
     assignee: "田中"
     effort: 1
-    start_date: "2026-04-28"
-    end_date: "2026-04-28"
+    start_date: "2026-04-13"
+    end_date: "2026-04-13"
     progress: 0
-    depends_on: ["test"]
-    group: "リリース"
+    depends_on: ["ec-perf"]
+    group: "EC サイトリニューアル"
+    milestone: true
+
+  # ── モバイルアプリ開発 ──────────────────────────────
+  - id: "app-req"
+    name: "アプリ要件定義"
+    assignee: "田中"
+    effort: 5
+    start_date: "2026-02-09"
+    end_date: "2026-02-13"
+    progress: 100
+    depends_on: []
+    group: "モバイルアプリ開発"
+    milestone: false
+
+  - id: "app-design"
+    name: "アプリ UI/UX デザイン"
+    assignee: "中村"
+    effort: 10
+    start_date: "2026-02-16"
+    end_date: "2026-03-02"
+    progress: 100
+    depends_on: ["app-req"]
+    group: "モバイルアプリ開発"
+    milestone: false
+
+  - id: "app-ios"
+    name: "iOS ネイティブ実装"
+    assignee: "山田"
+    effort: 20
+    start_date: "2026-03-03"
+    end_date: "2026-04-03"
+    progress: 70
+    depends_on: ["app-design"]
+    group: "モバイルアプリ開発"
+    milestone: false
+
+  - id: "app-android"
+    name: "Android ネイティブ実装"
+    assignee: "伊藤"
+    effort: 20
+    start_date: "2026-03-03"
+    end_date: "2026-04-03"
+    progress: 55
+    depends_on: ["app-design"]
+    group: "モバイルアプリ開発"
+    milestone: false
+
+  - id: "app-push"
+    name: "プッシュ通知基盤実装"
+    assignee: "佐藤"
+    effort: 5
+    start_date: "2026-03-16"
+    end_date: "2026-03-20"
+    progress: 100
+    depends_on: ["app-design"]
+    group: "モバイルアプリ開発"
+    milestone: false
+
+  - id: "app-apibridge"
+    name: "アプリ ↔ EC API 連携"
+    assignee: "佐藤"
+    effort: 8
+    start_date: "2026-03-23"
+    end_date: "2026-04-03"
+    progress: 30
+    depends_on: ["app-push", "ec-api"]
+    group: "モバイルアプリ開発"
+    milestone: false
+
+  - id: "app-test"
+    name: "アプリ E2E テスト"
+    assignee: "鈴木"
+    effort: 7
+    start_date: "2026-04-06"
+    end_date: "2026-04-14"
+    progress: 0
+    depends_on: ["app-ios", "app-android", "app-apibridge"]
+    group: "モバイルアプリ開発"
+    milestone: false
+
+  - id: "app-beta"
+    name: "ベータ版配信"
+    assignee: "田中"
+    effort: 1
+    start_date: "2026-04-15"
+    end_date: "2026-04-15"
+    progress: 0
+    depends_on: ["app-test"]
+    group: "モバイルアプリ開発"
+    milestone: true
+
+  - id: "app-feedback"
+    name: "ベータフィードバック反映"
+    assignee: "山田"
+    effort: 5
+    start_date: "2026-04-16"
+    end_date: "2026-04-22"
+    progress: 0
+    depends_on: ["app-beta"]
+    group: "モバイルアプリ開発"
+    milestone: false
+
+  - id: "app-release"
+    name: "アプリストア公開"
+    assignee: "田中"
+    effort: 1
+    start_date: "2026-04-27"
+    end_date: "2026-04-27"
+    progress: 0
+    depends_on: ["app-feedback"]
+    group: "モバイルアプリ開発"
+    milestone: true
+
+  # ── インフラ移行 (AWS → GCP) ──────────────────────────
+  - id: "infra-assess"
+    name: "現行インフラ棚卸し"
+    assignee: "高橋"
+    effort: 5
+    start_date: "2026-02-02"
+    end_date: "2026-02-06"
+    progress: 100
+    depends_on: []
+    group: "インフラ移行"
+    milestone: false
+
+  - id: "infra-design"
+    name: "GCP アーキテクチャ設計"
+    assignee: "高橋"
+    effort: 8
+    start_date: "2026-02-09"
+    end_date: "2026-02-20"
+    progress: 100
+    depends_on: ["infra-assess"]
+    group: "インフラ移行"
+    milestone: false
+
+  - id: "infra-iac"
+    name: "Terraform IaC 構築"
+    assignee: "高橋"
+    effort: 12
+    start_date: "2026-02-23"
+    end_date: "2026-03-13"
+    progress: 90
+    depends_on: ["infra-design"]
+    group: "インフラ移行"
+    milestone: false
+
+  - id: "infra-cicd"
+    name: "CI/CD パイプライン移行"
+    assignee: "伊藤"
+    effort: 6
+    start_date: "2026-03-09"
+    end_date: "2026-03-18"
+    progress: 80
+    depends_on: ["infra-design"]
+    group: "インフラ移行"
+    milestone: false
+
+  - id: "infra-db"
+    name: "DB マイグレーション"
+    assignee: "佐藤"
+    effort: 8
+    start_date: "2026-03-16"
+    end_date: "2026-03-27"
+    progress: 50
+    depends_on: ["infra-iac"]
+    group: "インフラ移行"
+    milestone: false
+
+  - id: "infra-monitor"
+    name: "監視・アラート設定"
+    assignee: "高橋"
+    effort: 5
+    start_date: "2026-03-30"
+    end_date: "2026-04-03"
+    progress: 20
+    depends_on: ["infra-iac", "infra-cicd"]
+    group: "インフラ移行"
+    milestone: false
+
+  - id: "infra-dryrun"
+    name: "移行リハーサル"
+    assignee: "高橋"
+    effort: 3
+    start_date: "2026-04-06"
+    end_date: "2026-04-08"
+    progress: 0
+    depends_on: ["infra-db", "infra-monitor"]
+    group: "インフラ移行"
+    milestone: false
+
+  - id: "infra-cutover"
+    name: "本番カットオーバー"
+    assignee: "高橋"
+    effort: 1
+    start_date: "2026-04-11"
+    end_date: "2026-04-11"
+    progress: 0
+    depends_on: ["infra-dryrun"]
+    group: "インフラ移行"
     milestone: true

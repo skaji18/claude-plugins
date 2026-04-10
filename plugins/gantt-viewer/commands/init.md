@@ -29,12 +29,13 @@ YAML ファイル名を教えてください（デフォルト: gantt.yaml）
 
 ### STEP 3: テンプレート読み込みと生成
 
-以下の4ファイルをテンプレートから読み込み、生成先に書き出します:
+以下の5ファイルをテンプレートから読み込み、生成先に書き出します:
 
 1. **YAML データファイル**: `${CLAUDE_PLUGIN_ROOT}/templates/gantt.yaml` を Read で読み込み、生成先に Write
 2. **HTML ビューア**: `${CLAUDE_PLUGIN_ROOT}/templates/gantt.html` を Read で読み込み、YAML ファイル名を置換して Write
 3. **コア JS**: `${CLAUDE_PLUGIN_ROOT}/templates/gantt-core.js` を Read で読み込み、そのまま Write
 4. **描画 JS**: `${CLAUDE_PLUGIN_ROOT}/templates/gantt-render.js` を Read で読み込み、そのまま Write
+5. **UI JS**: `${CLAUDE_PLUGIN_ROOT}/templates/gantt-ui.js` を Read で読み込み、そのまま Write
 
 HTML テンプレート内の `gantt.yaml` を、STEP 2 で決定したファイル名に置換してから書き出してください。
 
@@ -44,10 +45,11 @@ HTML テンプレート内の `gantt.yaml` を、STEP 2 で決定したファイ
 
 ```
 ファイルを生成しました:
-  - {dir}/{yaml-name}  (タスクデータ)
-  - {dir}/gantt.html    (ビューア)
-  - {dir}/gantt-core.js (コアロジック)
+  - {dir}/{yaml-name}    (タスクデータ)
+  - {dir}/gantt.html      (ビューア)
+  - {dir}/gantt-core.js   (コアロジック)
   - {dir}/gantt-render.js (描画)
+  - {dir}/gantt-ui.js     (UI イベント処理)
 
 ■ 使い方
   1. {yaml-name} を編集してタスクを定義
