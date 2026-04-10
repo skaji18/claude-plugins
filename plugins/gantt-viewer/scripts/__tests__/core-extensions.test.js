@@ -366,6 +366,23 @@ describe('calculateAssigneeLoad', () => {
     assert.equal(tanakaLoad[0].taskId, 'x');
     assert.equal(tanakaLoad[0].start_date, '2026-04-10');
     assert.equal(tanakaLoad[0].end_date, '2026-04-14');
+    assert.equal(tanakaLoad[0].effort, 3); // from makeTask default
+  });
+
+  it('should include effort field when present', () => {
+    // Given
+    const tasks = [
+      makeTask({ id: 'e1', assignee: 'Tanaka', effort: 5 }),
+      makeTask({ id: 'e2', assignee: 'Tanaka', effort: undefined }),
+    ];
+
+    // When
+    const result = calculateAssigneeLoad(tasks);
+
+    // Then
+    const entries = result.get('Tanaka');
+    assert.equal(entries[0].effort, 5);
+    assert.equal(entries[1].effort, null);
   });
 
   it('should correctly list all tasks for an assignee with multiple tasks', () => {

@@ -285,7 +285,7 @@ const GanttCore = (() => {
     const result = new Map();
     for (const t of tasks) {
       if (!result.has(t.assignee)) result.set(t.assignee, []);
-      result.get(t.assignee).push({ taskId: t.id, name: t.name, start_date: t.start_date, end_date: t.end_date });
+      result.get(t.assignee).push({ taskId: t.id, name: t.name, start_date: t.start_date, end_date: t.end_date, effort: t.effort != null ? t.effort : null });
     }
     return result;
   }

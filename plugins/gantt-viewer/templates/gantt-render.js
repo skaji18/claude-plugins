@@ -227,6 +227,10 @@ const GanttRender = (() => {
           if (state.violations.has(t.id)) bar.classList.add('warning');
           if (state.delayed.has(t.id)) bar.classList.add('delayed');
 
+          // When actual-compare is active and task has actual data, ghost the planned bar
+          const hasActual = state.actualCompareActive && t.actual_start_date;
+          if (hasActual) bar.classList.add('planned-ghost');
+
           // Apply assignee color
           const assigneeColor = state.assigneeColors.get(t.assignee);
           if (assigneeColor && !state.criticalPath.has(t.id)) {
@@ -245,6 +249,14 @@ const GanttRender = (() => {
             fill.className = 'progress-fill';
             fill.style.width = t.progress + '%';
             bar.appendChild(fill);
+          }
+
+          // Effort label
+          if (t.effort != null) {
+            const effortLabel = document.createElement('span');
+            effortLabel.className = 'effort-label';
+            effortLabel.textContent = t.effort + 'd';
+            bar.appendChild(effortLabel);
           }
 
           // Progress text
@@ -270,6 +282,45 @@ const GanttRender = (() => {
           }
 
           rowDiv.appendChild(bar);
+
+          // Actual bar (when actual-compare mode is active)
+          if (hasActual) {
+            const actualStart = GanttCore.parseDate(t.actual_start_date);
+            const actualEndStr = t.actual_end_date || getTodayStr();
+            const actualEnd = GanttCore.parseDate(actualEndStr);
+            const actualStartX = dayToX(actualStart);
+            const actualEndX = dayToX(actualEnd) + colW;
+
+            const actualBar = document.createElement('div');
+            actualBar.className = 'task-bar actual-bar';
+            actualBar.dataset.taskId = t.id;
+            if (state.criticalPath.has(t.id)) actualBar.classList.add('critical');
+            if (state.delayed.has(t.id)) actualBar.classList.add('delayed');
+
+            if (assigneeColor && !state.criticalPath.has(t.id)) {
+              actualBar.style.background = assigneeColor.bar;
+            }
+            if (state.delayed.has(t.id) && assigneeColor && !state.criticalPath.has(t.id)) {
+              actualBar.style.background = `repeating-linear-gradient(135deg, ${assigneeColor.bar}, ${assigneeColor.bar} 4px, rgba(255,255,255,0.3) 4px, rgba(255,255,255,0.3) 8px)`;
+            }
+
+            actualBar.style.left = actualStartX + 'px';
+            actualBar.style.width = (actualEndX - actualStartX) + 'px';
+
+            if (t.progress > 0) {
+              const actualFill = document.createElement('div');
+              actualFill.className = 'progress-fill';
+              actualFill.style.width = t.progress + '%';
+              actualBar.appendChild(actualFill);
+            }
+
+            const actualProgressText = document.createElement('span');
+            actualProgressText.className = 'progress-text';
+            actualProgressText.textContent = t.progress + '%';
+            actualBar.appendChild(actualProgressText);
+
+            rowDiv.appendChild(actualBar);
+          }
         }
 
         if (!isHidden) {
@@ -378,6 +429,32 @@ const GanttRender = (() => {
     const cpEl = document.getElementById('summary-critical-days');
     cpEl.textContent = summary.criticalDays + '日';
     cpEl.className = 'value';
+
+    // Effort summary
+    const effortEl = document.getElementById('summary-effort');
+    let totalEffort = 0;
+    let hasEffort = false;
+    const assigneeEffort = new Map();
+    for (const t of state.tasks) {
+      if (t.effort != null) {
+        totalEffort += t.effort;
+        hasEffort = true;
+        const prev = assigneeEffort.get(t.assignee) || 0;
+        assigneeEffort.set(t.assignee, prev + t.effort);
+      }
+    }
+    if (hasEffort) {
+      effortEl.textContent = totalEffort + 'd';
+      const breakdown = [];
+      for (const [name, val] of assigneeEffort) {
+        breakdown.push(name + ': ' + val + 'd');
+      }
+      effortEl.title = breakdown.join(', ');
+    } else {
+      effortEl.textContent = '-';
+      effortEl.title = '';
+    }
+    effortEl.className = 'value';
   }
 
   function populateFilterDropdowns() {
@@ -600,6 +677,14 @@ const GanttRender = (() => {
           label.textContent = entry.name;
           taskBar.appendChild(label);
 
+          // Effort label in load view
+          if (entry.effort != null) {
+            const effortSpan = document.createElement('span');
+            effortSpan.className = 'load-bar-effort';
+            effortSpan.textContent = ' (' + entry.effort + 'd)';
+            taskBar.appendChild(effortSpan);
+          }
+
           rowContainer.appendChild(taskBar);
         }
       }
@@ -719,6 +804,13 @@ const GanttRender = (() => {
     }
   }
 
+  function toggleActualCompare() {
+    state.actualCompareActive = !state.actualCompareActive;
+    const btn = document.getElementById('btn-actual-compare');
+    btn.classList.toggle('active', state.actualCompareActive);
+    render();
+  }
+
   function clearHighlights() {
     state.highlightedChain = null;
     document.querySelectorAll('.dep-highlight').forEach(el => el.classList.remove('dep-highlight'));
@@ -758,6 +850,7 @@ const GanttRender = (() => {
       milestoneDays: GanttCore.milestoneDaysLeft(data.tasks, today),
       highlightedChain: null,
       zoomFactor: 1.0,
+      actualCompareActive: false,
     };
 
     // Set up group colors
@@ -804,5 +897,6 @@ const GanttRender = (() => {
     setMode,
     zoomIn,
     zoomOut,
+    toggleActualCompare,
   };
 })();

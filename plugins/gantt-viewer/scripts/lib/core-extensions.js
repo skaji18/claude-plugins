@@ -179,6 +179,7 @@ export function calculateAssigneeLoad(tasks) {
       name: t.name,
       start_date: t.start_date,
       end_date: t.end_date,
+      effort: t.effort != null ? t.effort : null,
     });
   }
   return result;

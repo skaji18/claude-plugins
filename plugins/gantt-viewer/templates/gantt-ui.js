@@ -18,6 +18,7 @@ const GanttUI = (() => {
     bindPopoverEvents();
     bindTooltipEvents();
     bindZoomButtons();
+    bindActualCompareButton();
     bindDependencyHighlight();
   }
 
@@ -189,12 +190,35 @@ const GanttUI = (() => {
       return dep ? dep.name : id;
     });
 
+    let extraRows = '';
+    if (task.effort != null) {
+      extraRows += `<div class="popover-row"><span class="popover-label">予定工数</span><span class="popover-value">${escapeHtml(String(task.effort))}d</span></div>`;
+    }
+    if (task.actual_effort != null) {
+      extraRows += `<div class="popover-row"><span class="popover-label">実績工数</span><span class="popover-value">${escapeHtml(String(task.actual_effort))}d</span></div>`;
+    }
+    if (task.actual_start_date || task.actual_end_date) {
+      const actualStart = task.actual_start_date ? escapeHtml(task.actual_start_date) : '-';
+      const actualEnd = task.actual_end_date ? escapeHtml(task.actual_end_date) : '-';
+      extraRows += `<div class="popover-row"><span class="popover-label">実績期間</span><span class="popover-value">${actualStart} ~ ${actualEnd}</span></div>`;
+    }
+    if (task.blocked) {
+      extraRows += `<div class="popover-row"><span class="popover-label">状態</span><span class="popover-value popover-blocked">ブロック中</span></div>`;
+    }
+    if (task.tags && task.tags.length > 0) {
+      extraRows += `<div class="popover-row"><span class="popover-label">タグ</span><span class="popover-value">${task.tags.map(t => escapeHtml(String(t))).join(', ')}</span></div>`;
+    }
+    if (task.notes) {
+      extraRows += `<div class="popover-row popover-notes"><span class="popover-label">メモ</span><span class="popover-value">${escapeHtml(task.notes)}</span></div>`;
+    }
+
     popover.innerHTML = `
       <div class="popover-title">${escapeHtml(task.name)}</div>
       <div class="popover-row"><span class="popover-label">担当者</span><span class="popover-value">${escapeHtml(task.assignee)}</span></div>
       <div class="popover-row"><span class="popover-label">期間</span><span class="popover-value">${task.start_date} ~ ${task.end_date}</span></div>
       <div class="popover-row"><span class="popover-label">進捗</span><span class="popover-value">${task.progress}%</span></div>
       ${depNames.length > 0 ? `<div class="popover-row"><span class="popover-label">依存先</span><span class="popover-value">${depNames.map(n => escapeHtml(n)).join(', ')}</span></div>` : ''}
+      ${extraRows}
       <div class="popover-progress-bar"><div class="popover-progress-fill" style="width:${task.progress}%"></div></div>
     `;
 
@@ -272,6 +296,14 @@ const GanttUI = (() => {
     });
     document.getElementById('btn-zoom-out').addEventListener('click', () => {
       GanttRender.zoomOut();
+    });
+  }
+
+  // --- Actual Compare ---
+
+  function bindActualCompareButton() {
+    document.getElementById('btn-actual-compare').addEventListener('click', () => {
+      GanttRender.toggleActualCompare();
     });
   }
 

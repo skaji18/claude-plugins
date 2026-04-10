@@ -23,6 +23,7 @@
       --color-group-bg: #f0f0f0;
     }
     * { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body { overscroll-behavior: none; }
     body {
       margin: 0; overflow: hidden; height: 100vh;
       display: flex; flex-direction: column;
@@ -52,7 +53,7 @@
       flex-shrink: 0; position: relative; z-index: 29; background: #fafbfc;
       border-bottom: 1px solid #ddd;
       display: flex; gap: 12px; padding: 8px 16px;
-      overflow-x: auto;
+      overflow-x: auto; overscroll-behavior: none;
     }
     .summary-card { flex: 1; background: #fff; border: 1px solid #e0e0e0; border-radius: 8px; padding: 12px 16px; text-align: center; min-width: 120px; }
     .summary-card .label { font-size: 11px; color: #888; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 4px; }
@@ -64,6 +65,7 @@
     #chart-wrapper {
       flex: 1; overflow: auto;
       -webkit-overflow-scrolling: touch;
+      overscroll-behavior: none;
     }
 
     /* Chart grid - CSS Grid 2x2 */
@@ -135,6 +137,9 @@
     .progress-fill { height: 100%; border-radius: 3px; background: var(--color-progress); opacity: 0.7; }
     .progress-text { position: absolute; right: 4px; top: 50%; transform: translateY(-50%); font-size: 10px; color: #fff; font-weight: bold; text-shadow: 0 0 3px rgba(0,0,0,0.7), 0 0 3px rgba(0,0,0,0.7); pointer-events: none; }
 
+    /* Effort label on task bar */
+    .effort-label { position: absolute; left: 4px; top: 50%; transform: translateY(-50%); font-size: 10px; color: #fff; font-weight: bold; text-shadow: 0 0 3px rgba(0,0,0,0.7), 0 0 3px rgba(0,0,0,0.7); pointer-events: none; }
+
     /* Bar label (task name on bar, mobile only) */
     .bar-label { display: none; font-size: 11px; color: #fff; font-weight: bold; text-shadow: 0 0 3px rgba(0,0,0,0.7), 0 0 3px rgba(0,0,0,0.7); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; pointer-events: none; }
     .bar-label-inside { position: absolute; left: 4px; top: 50%; transform: translateY(-50%); max-width: calc(100% - 40px); }
@@ -157,6 +162,27 @@
     svg.arrows polygon { fill: #999; }
     svg.arrows polygon.dep-highlight { fill: #4a90d9; }
 
+    /* Load view effort label */
+    .load-bar-effort { font-size: 10px; color: rgba(255,255,255,0.8); pointer-events: none; }
+
+    /* Planned bar (ghost) for actual-compare mode */
+    .task-bar.planned-ghost {
+      opacity: 0.3;
+      border: 2px dashed currentColor;
+    }
+    .task-bar.planned-ghost .progress-fill,
+    .task-bar.planned-ghost .progress-text,
+    .task-bar.planned-ghost .effort-label,
+    .task-bar.planned-ghost .bar-label { display: none; }
+
+    /* Actual bar */
+    .task-bar.actual-bar {
+      height: calc(var(--bar-height) - 4px);
+      top: calc((var(--row-height) - var(--bar-height)) / 2 + 2px);
+      z-index: 2;
+      border: 1px solid rgba(255,255,255,0.5);
+    }
+
     .hidden { display: none; }
 
     /* Popover */
@@ -167,6 +193,8 @@
     #popover .popover-value { font-weight: 500; }
     #popover .popover-progress-bar { height: 6px; background: #eee; border-radius: 3px; margin-top: 8px; overflow: hidden; }
     #popover .popover-progress-fill { height: 100%; background: var(--color-progress); border-radius: 3px; }
+    #popover .popover-blocked { color: var(--color-critical); font-weight: bold; }
+    #popover .popover-notes .popover-value { font-size: 12px; color: #555; word-break: break-word; }
 
     /* Tooltip */
     #tooltip { position: fixed; background: #333; color: #fff; padding: 4px 10px; border-radius: 4px; font-size: 11px; z-index: 101; pointer-events: none; display: none; white-space: nowrap; }
@@ -197,7 +225,7 @@
         width: var(--sidebar-width); z-index: 60;
         background: #fff; transform: translateX(-100%);
         transition: transform 0.3s ease;
-        overflow-y: auto; grid-row: unset; grid-column: unset;
+        overflow-y: auto; overscroll-behavior: none; grid-row: unset; grid-column: unset;
         box-shadow: 2px 0 12px rgba(0,0,0,0.2);
       }
       #sidebar-column.drawer-open { transform: translateX(0); }
@@ -211,6 +239,7 @@
       #controls { padding: 8px 12px; gap: 8px; }
       .controls-separator { display: none; }
       .bar-label { display: block; }
+      .effort-label { display: none; }
     }
 
     /* Zoom controls */
@@ -219,7 +248,7 @@
     .zoom-label { font-size: 12px; color: #666; min-width: 36px; text-align: center; }
 
     /* Load view */
-    #load-view { display: none; border-top: 2px solid #ccc; max-height: 50vh; overflow: auto; -webkit-overflow-scrolling: touch; }
+    #load-view { display: none; border-top: 2px solid #ccc; max-height: 50vh; overflow: auto; -webkit-overflow-scrolling: touch; overscroll-behavior: none; }
     #load-view.active { display: block; }
 
     /* Load view grid: 4-quadrant like main chart */
@@ -303,6 +332,7 @@
       <button id="btn-zoom-in" title="ズームイン">+</button>
     </div>
     <div class="controls-separator"></div>
+    <button id="btn-actual-compare">予実比較</button>
     <button id="btn-load-view">負荷ビュー</button>
   </div>
   <div id="summary-panel">
@@ -317,6 +347,10 @@
     <div class="summary-card">
       <div class="label">CP 残日数</div>
       <div class="value" id="summary-critical-days">-</div>
+    </div>
+    <div class="summary-card">
+      <div class="label">工数 (effort)</div>
+      <div class="value" id="summary-effort">-</div>
     </div>
   </div>
   <div id="chart-wrapper">
