@@ -19,13 +19,18 @@ const GanttRender = (() => {
   ];
 
   function getBaseColWidth() {
-    if (state.mode === 'week') return COL_WIDTH_WEEK;
+    // Always returns per-day pixel width
+    if (state.mode === 'week') return COL_WIDTH_WEEK / 7;
     if (state.mode === 'month') return COL_WIDTH_MONTH;
     return COL_WIDTH_DAY;
   }
 
   function getColWidth() {
     return getBaseColWidth() * state.zoomFactor;
+  }
+
+  function getSidebarWidth() {
+    return parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--sidebar-width')) || 320;
   }
 
   function buildRows() {
@@ -48,7 +53,7 @@ const GanttRender = (() => {
   }
 
   function renderSidebar() {
-    const container = document.getElementById('sidebar-rows');
+    const container = document.getElementById('sidebar-column');
     container.innerHTML = '';
     for (const row of state.rows) {
       const div = document.createElement('div');
@@ -99,19 +104,20 @@ const GanttRender = (() => {
     const totalDays = GanttCore.daysBetween(range.start, range.end);
 
     if (state.mode === 'week') {
+      const weekCellW = colW * 7;
       let d = new Date(range.start);
       const dow = d.getDay();
       if (dow !== 1) d = GanttCore.addDays(d, (8 - dow) % 7);
-      let x = GanttCore.daysBetween(range.start, d) * (colW / 7);
+      let x = GanttCore.daysBetween(range.start, d) * colW;
       while (d <= range.end) {
         const cell = document.createElement('div');
         cell.className = 'header-cell';
         cell.style.left = x + 'px';
-        cell.style.width = colW + 'px';
+        cell.style.width = weekCellW + 'px';
         cell.textContent = GanttCore.formatDate(d);
         header.appendChild(cell);
         d = GanttCore.addDays(d, 7);
-        x += colW;
+        x += weekCellW;
       }
     } else if (state.mode === 'month') {
       // Month header: show month labels
@@ -147,7 +153,8 @@ const GanttRender = (() => {
         header.appendChild(cell);
       }
     }
-    header.style.width = totalDays * colW + 'px';
+    const timelineWidth = (totalDays + 1) * colW;
+    header.style.width = timelineWidth + 'px';
   }
 
   function dayToX(date) {
@@ -164,7 +171,8 @@ const GanttRender = (() => {
     const colW = getColWidth();
     const rowH = getRowHeight();
     const totalDays = GanttCore.daysBetween(state.dateRange.start, state.dateRange.end);
-    body.style.width = totalDays * colW + 'px';
+    const timelineWidth = (totalDays + 1) * colW;
+    body.style.width = timelineWidth + 'px';
 
     // Grid lines and weekend backgrounds
     for (let i = 0; i <= totalDays; i++) {
@@ -347,6 +355,7 @@ const GanttRender = (() => {
 
   function setMode(mode) {
     state.mode = mode;
+    state.dateRange = GanttCore.getDateRangeForMode(state.tasks, mode);
     document.getElementById('btn-day').classList.toggle('active', mode === 'day');
     document.getElementById('btn-week').classList.toggle('active', mode === 'week');
     document.getElementById('btn-month').classList.toggle('active', mode === 'month');
@@ -392,30 +401,13 @@ const GanttRender = (() => {
     }
   }
 
-  function updateStickyOffsets() {
-    const controls = document.getElementById('controls');
-    const summary = document.getElementById('summary-panel');
-    const controlsH = controls.offsetHeight;
-    const summaryH = summary.offsetHeight;
-    document.documentElement.style.setProperty('--controls-height', controlsH + 'px');
-    document.documentElement.style.setProperty('--sticky-header-offset', (controlsH + summaryH) + 'px');
-  }
-
-  function setupScrollSync() {
-    const chartContainer = document.getElementById('chart-container');
-    const headerWrap = document.getElementById('timeline-header-wrap');
-    if (!chartContainer || !headerWrap) return;
-
-    // Remove previous listener if any
-    if (state._scrollSyncHandler) {
-      chartContainer.removeEventListener('scroll', state._scrollSyncHandler);
-    }
-
-    state._scrollSyncHandler = () => {
-      headerWrap.scrollLeft = chartContainer.scrollLeft;
-    };
-
-    chartContainer.addEventListener('scroll', state._scrollSyncHandler);
+  /** Set #chart-grid explicit width so the grid overflows chart-wrapper correctly */
+  function updateGridSize() {
+    const totalDays = GanttCore.daysBetween(state.dateRange.start, state.dateRange.end);
+    const timelineWidth = (totalDays + 1) * getColWidth();
+    const sidebarWidth = getSidebarWidth();
+    const grid = document.getElementById('chart-grid');
+    grid.style.width = (sidebarWidth + timelineWidth) + 'px';
   }
 
   function render() {
@@ -424,7 +416,7 @@ const GanttRender = (() => {
     renderTimelineHeader();
     renderTimelineBody();
     renderSummary();
-    updateStickyOffsets();
+    updateGridSize();
   }
 
   // Public API
@@ -465,7 +457,7 @@ const GanttRender = (() => {
     container.innerHTML = '';
     const load = GanttCore.calculateAssigneeLoad(state.tasks);
     const range = state.dateRange;
-    const totalDays = GanttCore.daysBetween(range.start, range.end);
+    const totalDays = GanttCore.daysBetween(range.start, range.end) + 1;
 
     for (const [assignee, entries] of load) {
       const div = document.createElement('div');
@@ -505,8 +497,8 @@ const GanttRender = (() => {
     today.setHours(0, 0, 0, 0);
     if (today < state.dateRange.start || today > state.dateRange.end) return;
     const x = dayToX(today);
-    const container = document.getElementById('chart-container');
-    container.scrollLeft = Math.max(0, x - container.clientWidth / 2);
+    const wrapper = document.getElementById('chart-wrapper');
+    wrapper.scrollLeft = Math.max(0, x - wrapper.clientWidth / 2);
   }
 
   function expandAll() {
@@ -576,21 +568,34 @@ const GanttRender = (() => {
     }
   }
 
+  function zoomWithPreservedScroll(changeFn) {
+    const wrapper = document.getElementById('chart-wrapper');
+    const ratio = wrapper.scrollWidth > 0 ? wrapper.scrollLeft / wrapper.scrollWidth : 0;
+    changeFn();
+    requestAnimationFrame(() => {
+      wrapper.scrollLeft = wrapper.scrollWidth * ratio;
+    });
+  }
+
   function zoomIn() {
     const idx = ZOOM_STEPS.indexOf(state.zoomFactor);
     if (idx < ZOOM_STEPS.length - 1) {
-      state.zoomFactor = ZOOM_STEPS[idx + 1];
-      updateZoomLabel();
-      render();
+      zoomWithPreservedScroll(() => {
+        state.zoomFactor = ZOOM_STEPS[idx + 1];
+        updateZoomLabel();
+        render();
+      });
     }
   }
 
   function zoomOut() {
     const idx = ZOOM_STEPS.indexOf(state.zoomFactor);
     if (idx > 0) {
-      state.zoomFactor = ZOOM_STEPS[idx - 1];
-      updateZoomLabel();
-      render();
+      zoomWithPreservedScroll(() => {
+        state.zoomFactor = ZOOM_STEPS[idx - 1];
+        updateZoomLabel();
+        render();
+      });
     }
   }
 
@@ -599,8 +604,7 @@ const GanttRender = (() => {
     document.querySelectorAll('.dep-highlight').forEach(el => el.classList.remove('dep-highlight'));
   }
 
-  async function init(yamlUrl) {
-    const data = await GanttCore.loadYaml(yamlUrl);
+  function _initFromData(data) {
     document.getElementById('project-name').textContent = data.project.name;
 
     let cp;
@@ -622,7 +626,6 @@ const GanttRender = (() => {
       collapsed: new Set(),
       rows: [],
       taskPositions: new Map(),
-      // New state
       delayed: GanttCore.getDelayedTasks(data.tasks, today),
       summary: null,
       assigneeColors: GanttCore.assignColors(data.tasks),
@@ -648,10 +651,6 @@ const GanttRender = (() => {
     document.getElementById('btn-month').addEventListener('click', () => setMode('month'));
 
     render();
-    setupScrollSync();
-
-    // Recalculate sticky offsets on resize (controls may wrap)
-    window.addEventListener('resize', updateStickyOffsets);
 
     // Bind UI events after initial render
     if (typeof GanttUI !== 'undefined') {
@@ -659,8 +658,18 @@ const GanttRender = (() => {
     }
   }
 
+  async function init(yamlUrl) {
+    const data = await GanttCore.loadYaml(yamlUrl);
+    _initFromData(data);
+  }
+
+  function initWithData(data) {
+    _initFromData(data);
+  }
+
   return {
     init,
+    initWithData,
     getState,
     applyFilter,
     toggleLoadView,

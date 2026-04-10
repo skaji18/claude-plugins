@@ -25,13 +25,13 @@ A Claude Code plugin that provides interactive Gantt chart visualization from YA
 
 ### `/gantt-viewer:init`
 
-Generates Gantt chart template files into your project directory. Interactively asks for the output directory and YAML filename, then copies the following files:
+Generates a `gantt.yaml` template file into your project directory. Interactively asks for the output directory and YAML filename. HTML/JS files are managed internally by the plugin -- you only need to maintain the YAML file.
 
-- `gantt.yaml` -- task data (editable)
-- `gantt.html` -- HTML viewer
-- `gantt-core.js` -- core logic (date calculations, critical path, filters)
-- `gantt-render.js` -- chart rendering
-- `gantt-ui.js` -- UI event handling (filters, popover, drawer, pinch-zoom)
+### `/gantt-viewer:open <yaml-path> [--serve]`
+
+Generates a self-contained HTML file from the specified YAML and opens it in the default browser. No HTTP server required -- the HTML includes all JavaScript and data inline, with no external dependencies.
+
+With the `--serve` flag, instead of opening a browser directly, it starts an HTTP server via `npx serve` and displays the URL. This is useful when working over SSH or in environments where a local browser cannot be launched.
 
 ### `/gantt-viewer:show <yaml-path>`
 
@@ -83,17 +83,14 @@ tasks:
 
 ## Viewing the Chart
 
-After running `/gantt-viewer:init`, serve the output directory via HTTP:
+After running `/gantt-viewer:init`, use the `open` command to view the chart:
 
-```bash
-npx serve ./gantt
+```
+/gantt-viewer:open ./gantt/gantt.yaml
 ```
 
-Then open `http://localhost:3000/gantt.html` in your browser.
-
-Note: Opening `gantt.html` via `file://` will fail due to CORS restrictions on YAML fetch.
+This generates a self-contained HTML file and opens it in your default browser. No HTTP server is needed.
 
 ## Requirements
 
-- Node.js (for `check` and `show` commands)
-- A local HTTP server (for the HTML viewer)
+- Node.js (for `check`, `show`, and `open` commands)

@@ -8,6 +8,7 @@ import {
   assignColors,
   milestoneDaysLeft,
   calculateAssigneeLoad,
+  getDateRangeForMode,
 } from '../lib/core-extensions.js';
 
 function makeTask(overrides) {
@@ -385,5 +386,108 @@ describe('calculateAssigneeLoad', () => {
     assert.ok(taskIds.includes('t1'));
     assert.ok(taskIds.includes('t2'));
     assert.ok(taskIds.includes('t3'));
+  });
+});
+
+function formatDate(d) {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const dd = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${dd}`;
+}
+
+describe('getDateRangeForMode', () => {
+  it('should return month-aligned range for day mode', () => {
+    // Given: tasks in April 2026
+    const tasks = [
+      makeTask({ id: 'a', start_date: '2026-04-05', end_date: '2026-04-20' }),
+    ];
+
+    // When
+    const range = getDateRangeForMode(tasks, 'day');
+
+    // Then: April 1 to April 30
+    assert.equal(formatDate(range.start), '2026-04-01');
+    assert.equal(formatDate(range.end), '2026-04-30');
+  });
+
+  it('should return month-aligned range for month mode', () => {
+    // Given
+    const tasks = [
+      makeTask({ id: 'a', start_date: '2026-04-05', end_date: '2026-04-20' }),
+    ];
+
+    // When
+    const range = getDateRangeForMode(tasks, 'month');
+
+    // Then: April 1 to April 30
+    assert.equal(formatDate(range.start), '2026-04-01');
+    assert.equal(formatDate(range.end), '2026-04-30');
+  });
+
+  it('should snap start to Monday and end to Sunday for week mode', () => {
+    // Given: tasks in April 2026
+    // April 1, 2026 is a Wednesday => snap start to Monday March 30
+    // April 30, 2026 is a Thursday => snap end to Sunday May 3
+    const tasks = [
+      makeTask({ id: 'a', start_date: '2026-04-05', end_date: '2026-04-20' }),
+    ];
+
+    // When
+    const range = getDateRangeForMode(tasks, 'week');
+
+    // Then
+    assert.equal(formatDate(range.start), '2026-03-30'); // Monday
+    assert.equal(range.start.getDay(), 1); // Monday
+    assert.equal(formatDate(range.end), '2026-05-03'); // Sunday
+    assert.equal(range.end.getDay(), 0); // Sunday
+  });
+
+  it('should not extend range if month already starts on Monday and ends on Sunday', () => {
+    // Given: June 2026 starts on Monday, ends on Tuesday
+    // => start stays June 1 (Monday), end extends to July 5 (Sunday)
+    const tasks = [
+      makeTask({ id: 'a', start_date: '2026-06-05', end_date: '2026-06-20' }),
+    ];
+
+    // When
+    const range = getDateRangeForMode(tasks, 'week');
+
+    // Then: June 1 is Monday, June 30 is Tuesday => end snaps to July 5 (Sunday)
+    assert.equal(formatDate(range.start), '2026-06-01');
+    assert.equal(range.start.getDay(), 1); // Monday
+    assert.equal(range.end.getDay(), 0); // Sunday
+  });
+
+  it('should handle tasks spanning multiple months in week mode', () => {
+    // Given: tasks from March to May
+    const tasks = [
+      makeTask({ id: 'a', start_date: '2026-03-10', end_date: '2026-05-15' }),
+    ];
+
+    // When
+    const range = getDateRangeForMode(tasks, 'week');
+
+    // Then:
+    // March 1 is Sunday => snap to Monday Feb 24
+    // May 31 is Sunday => stays May 31
+    assert.equal(range.start.getDay(), 1); // Monday
+    assert.equal(range.end.getDay(), 0); // Sunday
+    assert.ok(range.start <= new Date('2026-03-01T00:00:00'));
+    assert.ok(range.end >= new Date('2026-05-31T00:00:00'));
+  });
+
+  it('should ensure week mode range total days is divisible by 7', () => {
+    // Given
+    const tasks = [
+      makeTask({ id: 'a', start_date: '2026-04-10', end_date: '2026-04-25' }),
+    ];
+
+    // When
+    const range = getDateRangeForMode(tasks, 'week');
+
+    // Then: Monday to Sunday => total days + 1 should be divisible by 7
+    const totalDays = Math.round((range.end - range.start) / 86400000) + 1;
+    assert.equal(totalDays % 7, 0, `Total days ${totalDays} should be divisible by 7`);
   });
 });

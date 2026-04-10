@@ -1,11 +1,11 @@
 ---
-description: プロジェクトにガントチャート用の HTML + YAML テンプレートを生成する
+description: プロジェクトにガントチャート用の YAML 雛形を生成する
 allowed-tools: [Read, Write, Bash]
 ---
 
 # gantt-viewer:init
 
-プロジェクトにガントチャートビューア用のファイルを生成します。
+プロジェクトにガントチャート用の YAML 雛形ファイルを生成します。
 ユーザーと対話しながら生成先とファイル名を決定します。
 
 ## 実行手順
@@ -15,7 +15,7 @@ allowed-tools: [Read, Write, Bash]
 ユーザーに以下を質問してください:
 
 ```
-ガントチャートのファイルを生成するディレクトリを教えてください。
+ガントチャートの YAML ファイルを生成するディレクトリを教えてください。
 例: ./gantt または ./docs/schedule
 ```
 
@@ -29,33 +29,21 @@ YAML ファイル名を教えてください（デフォルト: gantt.yaml）
 
 ### STEP 3: テンプレート読み込みと生成
 
-以下の5ファイルをテンプレートから読み込み、生成先に書き出します:
+YAML データファイルのみをテンプレートから読み込み、生成先に書き出します:
 
-1. **YAML データファイル**: `${CLAUDE_PLUGIN_ROOT}/templates/gantt.yaml` を Read で読み込み、生成先に Write
-2. **HTML ビューア**: `${CLAUDE_PLUGIN_ROOT}/templates/gantt.html` を Read で読み込み、YAML ファイル名を置換して Write
-3. **コア JS**: `${CLAUDE_PLUGIN_ROOT}/templates/gantt-core.js` を Read で読み込み、そのまま Write
-4. **描画 JS**: `${CLAUDE_PLUGIN_ROOT}/templates/gantt-render.js` を Read で読み込み、そのまま Write
-5. **UI JS**: `${CLAUDE_PLUGIN_ROOT}/templates/gantt-ui.js` を Read で読み込み、そのまま Write
-
-HTML テンプレート内の `gantt.yaml` を、STEP 2 で決定したファイル名に置換してから書き出してください。
+- `${CLAUDE_PLUGIN_ROOT}/templates/gantt.yaml` を Read で読み込み、生成先に Write
 
 ### STEP 4: 完了メッセージ
 
-生成されたファイル一覧を表示し、以下を案内してください:
+生成されたファイルを表示し、以下を案内してください:
 
 ```
 ファイルを生成しました:
   - {dir}/{yaml-name}    (タスクデータ)
-  - {dir}/gantt.html      (ビューア)
-  - {dir}/gantt-core.js   (コアロジック)
-  - {dir}/gantt-render.js (描画)
-  - {dir}/gantt-ui.js     (UI イベント処理)
 
 ■ 使い方
   1. {yaml-name} を編集してタスクを定義
-  2. HTML を HTTP サーバー経由で開いてガントチャートを閲覧
-     (例: VSCode の Live Preview 拡張、または npx serve {dir})
-     ※ file:// では YAML の読み込みが CORS で失敗します
+  2. /gantt-viewer:open {dir}/{yaml-name} でブラウザにガントチャートを表示
   3. /gantt-viewer:check {dir}/{yaml-name} で整合性チェック
   4. /gantt-viewer:show {dir}/{yaml-name} でサマリー表示
 ```

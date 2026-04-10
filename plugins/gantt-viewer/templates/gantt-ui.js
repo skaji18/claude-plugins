@@ -74,9 +74,26 @@ const GanttUI = (() => {
   function bindDrawerEvents() {
     const toggle = document.getElementById('drawer-toggle');
     const overlay = document.getElementById('drawer-overlay');
-    const sidebar = document.getElementById('sidebar');
+    const sidebar = document.getElementById('sidebar-column');
+    const chartGrid = document.getElementById('chart-grid');
+    const timelineBody = document.getElementById('timeline-body');
+
+    // Move sidebar to body level so it escapes any ancestor stacking
+    // context created by #chart-wrapper (overflow:auto can trap z-index).
+    function promoteToBody() {
+      if (sidebar.parentElement !== document.body) {
+        document.body.insertBefore(sidebar, overlay);
+      }
+    }
+
+    function restoreToGrid() {
+      if (sidebar.parentElement !== chartGrid) {
+        chartGrid.insertBefore(sidebar, timelineBody);
+      }
+    }
 
     function openDrawer() {
+      promoteToBody();
       sidebar.classList.add('drawer-open');
       overlay.classList.add('visible');
     }
@@ -85,6 +102,15 @@ const GanttUI = (() => {
       sidebar.classList.remove('drawer-open');
       overlay.classList.remove('visible');
     }
+
+    // When resizing from mobile to desktop, restore sidebar into grid
+    window.matchMedia('(max-width: 768px)').addEventListener('change', (e) => {
+      if (!e.matches) {
+        sidebar.classList.remove('drawer-open');
+        overlay.classList.remove('visible');
+        restoreToGrid();
+      }
+    });
 
     toggle.addEventListener('click', openDrawer);
     overlay.addEventListener('click', closeDrawer);

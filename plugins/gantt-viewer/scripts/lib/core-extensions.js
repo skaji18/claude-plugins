@@ -130,6 +130,42 @@ export function milestoneDaysLeft(tasks, today) {
 }
 
 /**
+ * Extend getDateRange to align boundaries to the given display mode.
+ * - 'week': start snaps to Monday, end snaps to Sunday
+ * - 'month' / 'day': default month-aligned range (startOfMonth..endOfMonth)
+ */
+export function getDateRangeForMode(tasks, mode) {
+  // Base range: startOfMonth(min) .. endOfMonth(max)
+  let min = parseDate(tasks[0].start_date);
+  let max = parseDate(tasks[0].end_date);
+  for (const t of tasks) {
+    const s = parseDate(t.start_date);
+    const e = parseDate(t.end_date);
+    if (s < min) min = s;
+    if (e > max) max = e;
+  }
+  const start = new Date(min.getFullYear(), min.getMonth(), 1);
+  const end = new Date(max.getFullYear(), max.getMonth() + 1, 0);
+
+  if (mode === 'week') {
+    // Snap start to Monday
+    const startDow = start.getDay();
+    const startDiff = startDow === 0 ? 6 : startDow - 1;
+    const weekStart = addDays(start, -startDiff);
+    // Snap end to Sunday
+    const endDow = end.getDay();
+    const endDiff = endDow === 0 ? 0 : 7 - endDow;
+    const weekEnd = addDays(end, endDiff);
+    return { start: weekStart, end: weekEnd };
+  }
+  return { start, end };
+}
+
+function addDays(date, n) {
+  return new Date(date.getTime() + n * MS_PER_DAY);
+}
+
+/**
  * Returns Map<assignee, [{taskId, start_date, end_date}]>
  */
 export function calculateAssigneeLoad(tasks) {

@@ -138,6 +138,15 @@ const GanttCore = (() => {
     return violations;
   }
 
+  function startOfMonth(date) {
+    return new Date(date.getFullYear(), date.getMonth(), 1);
+  }
+
+  function endOfMonth(date) {
+    // Day 0 of next month = last day of current month
+    return new Date(date.getFullYear(), date.getMonth() + 1, 0);
+  }
+
   function getDateRange(tasks) {
     let min = parseDate(tasks[0].start_date);
     let max = parseDate(tasks[0].end_date);
@@ -147,7 +156,31 @@ const GanttCore = (() => {
       if (s < min) min = s;
       if (e > max) max = e;
     }
-    return { start: addDays(min, -2), end: addDays(max, 2) };
+    return { start: startOfMonth(min), end: endOfMonth(max) };
+  }
+
+  function startOfWeek(date) {
+    // Monday as start of week (getDay: 0=Sun, 1=Mon, ..., 6=Sat)
+    const d = new Date(date);
+    const dow = d.getDay();
+    const diff = dow === 0 ? 6 : dow - 1; // days since Monday
+    return addDays(d, -diff);
+  }
+
+  function endOfWeek(date) {
+    // Sunday as end of week
+    const d = new Date(date);
+    const dow = d.getDay();
+    const diff = dow === 0 ? 0 : 7 - dow; // days until Sunday
+    return addDays(d, diff);
+  }
+
+  function getDateRangeForMode(tasks, mode) {
+    const base = getDateRange(tasks);
+    if (mode === 'week') {
+      return { start: startOfWeek(base.start), end: endOfWeek(base.end) };
+    }
+    return base;
   }
 
   function groupTasks(tasks) {
@@ -266,6 +299,7 @@ const GanttCore = (() => {
     calculateCriticalPath,
     checkViolations,
     getDateRange,
+    getDateRangeForMode,
     groupTasks,
     getDelayedTasks,
     calculateSummary,
