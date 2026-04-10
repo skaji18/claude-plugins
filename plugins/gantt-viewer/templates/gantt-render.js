@@ -456,40 +456,160 @@ const GanttRender = (() => {
     const container = document.getElementById('load-view-content');
     container.innerHTML = '';
     const load = GanttCore.calculateAssigneeLoad(state.tasks);
+    const colW = getColWidth();
     const range = state.dateRange;
-    const totalDays = GanttCore.daysBetween(range.start, range.end) + 1;
+    const totalDays = GanttCore.daysBetween(range.start, range.end);
+    const timelineWidth = (totalDays + 1) * colW;
+    const subRowHeight = 28;
 
+    // Build the 4-quadrant grid
+    const grid = document.createElement('div');
+    grid.className = 'load-grid';
+
+    // -- Corner header (top-left) --
+    const corner = document.createElement('div');
+    corner.className = 'load-corner-header';
+    corner.textContent = '担当者';
+    grid.appendChild(corner);
+
+    // -- Date header (top-right) --
+    const dateHeader = document.createElement('div');
+    dateHeader.className = 'load-timeline-header';
+    dateHeader.style.width = timelineWidth + 'px';
+    // Render date cells same as main header
+    if (state.mode === 'week') {
+      const weekCellW = colW * 7;
+      let d = new Date(range.start);
+      const dow = d.getDay();
+      if (dow !== 1) d = GanttCore.addDays(d, (8 - dow) % 7);
+      let x = GanttCore.daysBetween(range.start, d) * colW;
+      while (d <= range.end) {
+        const cell = document.createElement('div');
+        cell.className = 'header-cell';
+        cell.style.left = x + 'px';
+        cell.style.width = weekCellW + 'px';
+        cell.textContent = GanttCore.formatDate(d);
+        dateHeader.appendChild(cell);
+        d = GanttCore.addDays(d, 7);
+        x += weekCellW;
+      }
+    } else if (state.mode === 'month') {
+      let prevMonth = -1;
+      for (let i = 0; i <= totalDays; i++) {
+        const d = GanttCore.addDays(range.start, i);
+        const m = d.getMonth();
+        if (m !== prevMonth) {
+          const cell = document.createElement('div');
+          cell.className = 'header-cell';
+          cell.style.left = (i * colW) + 'px';
+          let daysInMonth = 1;
+          for (let j = i + 1; j <= totalDays; j++) {
+            if (GanttCore.addDays(range.start, j).getMonth() !== m) break;
+            daysInMonth++;
+          }
+          cell.style.width = (daysInMonth * colW) + 'px';
+          cell.textContent = `${d.getFullYear()}/${m + 1}`;
+          dateHeader.appendChild(cell);
+          prevMonth = m;
+        }
+      }
+    } else {
+      for (let i = 0; i <= totalDays; i++) {
+        const d = GanttCore.addDays(range.start, i);
+        const cell = document.createElement('div');
+        cell.className = 'header-cell';
+        cell.style.left = (i * colW) + 'px';
+        cell.style.width = colW + 'px';
+        cell.textContent = `${d.getMonth() + 1}/${d.getDate()}`;
+        dateHeader.appendChild(cell);
+      }
+    }
+    grid.appendChild(dateHeader);
+
+    // -- Sidebar (bottom-left) and Timeline body (bottom-right) --
+    const sidebar = document.createElement('div');
+    sidebar.className = 'load-sidebar';
+
+    const body = document.createElement('div');
+    body.className = 'load-body';
+    body.style.width = timelineWidth + 'px';
+
+    // Grid lines and weekend backgrounds
+    for (let i = 0; i <= totalDays; i++) {
+      const d = GanttCore.addDays(range.start, i);
+      const dow = d.getDay();
+      const line = document.createElement('div');
+      line.className = 'grid-line';
+      line.style.left = (i * colW) + 'px';
+      body.appendChild(line);
+      if (dow === 0 || dow === 6) {
+        const we = document.createElement('div');
+        we.className = 'weekend-col';
+        we.style.left = (i * colW) + 'px';
+        we.style.width = colW + 'px';
+        body.appendChild(we);
+      }
+    }
+
+    // Today line
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    if (today >= range.start && today <= range.end) {
+      const tx = dayToX(today) + colW / 2;
+      const todayLine = document.createElement('div');
+      todayLine.className = 'today-line';
+      todayLine.style.left = tx + 'px';
+      body.appendChild(todayLine);
+    }
+
+    // Render each assignee
     for (const [assignee, entries] of load) {
-      const div = document.createElement('div');
-      div.className = 'load-assignee';
+      const subRows = GanttCore.packSubRows(entries);
+      const assigneeHeight = subRows.length * subRowHeight;
+
+      // Sidebar: assignee name spanning all sub-rows
       const nameDiv = document.createElement('div');
-      nameDiv.className = 'load-assignee-name';
+      nameDiv.className = 'load-sidebar-name';
+      nameDiv.style.height = assigneeHeight + 'px';
       nameDiv.textContent = assignee;
-      div.appendChild(nameDiv);
+      sidebar.appendChild(nameDiv);
 
-      const barContainer = document.createElement('div');
-      barContainer.className = 'load-bar-container';
-      barContainer.style.width = '100%';
+      // Timeline: container for this assignee's sub-rows
+      const rowContainer = document.createElement('div');
+      rowContainer.className = 'load-assignee-row';
+      rowContainer.style.height = assigneeHeight + 'px';
 
-      for (const entry of entries) {
-        const start = GanttCore.daysBetween(range.start, GanttCore.parseDate(entry.start_date));
-        const end = GanttCore.daysBetween(range.start, GanttCore.parseDate(entry.end_date));
-        const leftPct = (start / totalDays * 100);
-        const widthPct = ((end - start + 1) / totalDays * 100);
+      for (let ri = 0; ri < subRows.length; ri++) {
+        for (const entry of subRows[ri]) {
+          const startX = dayToX(GanttCore.parseDate(entry.start_date));
+          const endX = dayToX(GanttCore.parseDate(entry.end_date)) + colW;
+          const barWidth = endX - startX;
 
-        const taskBar = document.createElement('div');
-        taskBar.className = 'load-bar-task';
-        const color = state.assigneeColors.get(assignee);
-        taskBar.style.background = color ? color.bar : 'var(--color-bar)';
-        taskBar.style.left = leftPct + '%';
-        taskBar.style.width = widthPct + '%';
-        taskBar.textContent = entry.taskId;
-        barContainer.appendChild(taskBar);
+          const taskBar = document.createElement('div');
+          taskBar.className = 'load-bar-task';
+          const color = state.assigneeColors.get(assignee);
+          taskBar.style.background = color ? color.bar : 'var(--color-bar)';
+          taskBar.style.left = startX + 'px';
+          taskBar.style.width = barWidth + 'px';
+          taskBar.style.top = (ri * subRowHeight + 2) + 'px';
+          taskBar.style.height = (subRowHeight - 4) + 'px';
+
+          // Task name label
+          const label = document.createElement('span');
+          label.className = 'load-bar-label';
+          label.textContent = entry.name;
+          taskBar.appendChild(label);
+
+          rowContainer.appendChild(taskBar);
+        }
       }
 
-      div.appendChild(barContainer);
-      container.appendChild(div);
+      body.appendChild(rowContainer);
     }
+
+    grid.appendChild(sidebar);
+    grid.appendChild(body);
+    container.appendChild(grid);
   }
 
   function scrollToToday() {

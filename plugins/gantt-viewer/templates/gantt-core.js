@@ -285,9 +285,39 @@ const GanttCore = (() => {
     const result = new Map();
     for (const t of tasks) {
       if (!result.has(t.assignee)) result.set(t.assignee, []);
-      result.get(t.assignee).push({ taskId: t.id, start_date: t.start_date, end_date: t.end_date });
+      result.get(t.assignee).push({ taskId: t.id, name: t.name, start_date: t.start_date, end_date: t.end_date });
     }
     return result;
+  }
+
+  /**
+   * Pack tasks into sub-rows using greedy algorithm.
+   * Tasks that don't overlap share a sub-row; overlapping tasks get new sub-rows.
+   * Returns array of sub-rows, each an array of task entries.
+   */
+  function packSubRows(entries) {
+    // Sort by start_date then end_date
+    const sorted = entries.slice().sort((a, b) => {
+      if (a.start_date !== b.start_date) return a.start_date < b.start_date ? -1 : 1;
+      return a.end_date < b.end_date ? -1 : 1;
+    });
+    const subRows = []; // each element: array of entries + lastEnd tracking
+    for (const entry of sorted) {
+      let placed = false;
+      for (let i = 0; i < subRows.length; i++) {
+        // Check if entry fits: no overlap with last task in this sub-row
+        if (entry.start_date > subRows[i].lastEnd) {
+          subRows[i].tasks.push(entry);
+          subRows[i].lastEnd = entry.end_date;
+          placed = true;
+          break;
+        }
+      }
+      if (!placed) {
+        subRows.push({ tasks: [entry], lastEnd: entry.end_date });
+      }
+    }
+    return subRows.map(r => r.tasks);
   }
 
   return {
@@ -307,5 +337,6 @@ const GanttCore = (() => {
     assignColors,
     milestoneDaysLeft,
     calculateAssigneeLoad,
+    packSubRows,
   };
 })();
