@@ -167,6 +167,96 @@ const GanttCore = (() => {
     return groups;
   }
 
+  function getDelayedTasks(tasks, today) {
+    const todayDate = parseDate(today);
+    const delayed = new Set();
+    for (const t of tasks) {
+      const endDate = parseDate(t.end_date);
+      if (endDate <= todayDate && t.progress < 100) {
+        delayed.add(t.id);
+      }
+    }
+    return delayed;
+  }
+
+  function calculateSummary(tasks, criticalPath, today) {
+    if (tasks.length === 0) {
+      return { overallProgress: 0, delayedCount: 0, criticalDays: 0 };
+    }
+    const totalProgress = tasks.reduce((sum, t) => sum + t.progress, 0);
+    const overallProgress = Math.round(totalProgress / tasks.length);
+    const delayed = getDelayedTasks(tasks, today);
+    const delayedCount = delayed.size;
+
+    let criticalDays = 0;
+    if (criticalPath.path.size > 0) {
+      const todayDate = parseDate(today);
+      let maxEnd = null;
+      for (const t of tasks) {
+        if (criticalPath.path.has(t.id)) {
+          const endDate = parseDate(t.end_date);
+          if (maxEnd === null || endDate > maxEnd) maxEnd = endDate;
+        }
+      }
+      if (maxEnd !== null) criticalDays = daysBetween(todayDate, maxEnd);
+    }
+    return { overallProgress, delayedCount, criticalDays };
+  }
+
+  function filterTasks(tasks, filter, context) {
+    context = context || {};
+    const delayed = context.today ? getDelayedTasks(tasks, context.today) : new Set();
+    const criticalPath = context.criticalPath || new Set();
+    const result = new Set();
+    for (const t of tasks) {
+      let match = true;
+      if (filter.assignee && t.assignee !== filter.assignee) match = false;
+      if (filter.group && t.group !== filter.group) match = false;
+      if (filter.delayedOnly && !delayed.has(t.id)) match = false;
+      if (filter.criticalOnly && !criticalPath.has(t.id)) match = false;
+      if (match) result.add(t.id);
+    }
+    return result;
+  }
+
+  function assignColors(tasks) {
+    const assignees = [];
+    const seen = new Set();
+    for (const t of tasks) {
+      if (!seen.has(t.assignee)) { seen.add(t.assignee); assignees.push(t.assignee); }
+    }
+    const colorMap = new Map();
+    const count = assignees.length;
+    for (let i = 0; i < count; i++) {
+      const hue = Math.round((360 / count) * i);
+      colorMap.set(assignees[i], {
+        bar: `hsl(${hue}, 70%, 50%)`,
+        light: `hsl(${hue}, 70%, 90%)`,
+      });
+    }
+    return colorMap;
+  }
+
+  function milestoneDaysLeft(tasks, today) {
+    const todayDate = parseDate(today);
+    const result = new Map();
+    for (const t of tasks) {
+      if (t.milestone) {
+        result.set(t.id, daysBetween(todayDate, parseDate(t.end_date)));
+      }
+    }
+    return result;
+  }
+
+  function calculateAssigneeLoad(tasks) {
+    const result = new Map();
+    for (const t of tasks) {
+      if (!result.has(t.assignee)) result.set(t.assignee, []);
+      result.get(t.assignee).push({ taskId: t.id, start_date: t.start_date, end_date: t.end_date });
+    }
+    return result;
+  }
+
   return {
     parseDate,
     daysBetween,
@@ -177,5 +267,11 @@ const GanttCore = (() => {
     checkViolations,
     getDateRange,
     groupTasks,
+    getDelayedTasks,
+    calculateSummary,
+    filterTasks,
+    assignColors,
+    milestoneDaysLeft,
+    calculateAssigneeLoad,
   };
 })();

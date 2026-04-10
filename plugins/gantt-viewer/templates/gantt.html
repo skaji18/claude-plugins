@@ -24,45 +24,185 @@
     }
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body { font-family: -apple-system, BlinkMacSystemFont, sans-serif; font-size: 13px; color: #333; }
-    #controls { padding: 12px 16px; border-bottom: 1px solid #ddd; display: flex; gap: 12px; align-items: center; }
-    #controls button { padding: 4px 12px; cursor: pointer; border: 1px solid #ccc; border-radius: 4px; background: #fff; }
+
+    /* Controls */
+    #controls { padding: 12px 16px; border-bottom: 1px solid #ddd; display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+    #controls button { padding: 4px 12px; cursor: pointer; border: 1px solid #ccc; border-radius: 4px; background: #fff; font-size: 13px; }
     #controls button.active { background: #4a90d9; color: #fff; border-color: #4a90d9; }
+    #controls button:hover { background: #f0f0f0; }
+    #controls button.active:hover { background: #3a7fc8; }
     #project-name { font-weight: bold; font-size: 16px; }
+    #controls select { padding: 4px 8px; border: 1px solid #ccc; border-radius: 4px; font-size: 13px; }
+    .controls-separator { width: 1px; height: 24px; background: #ddd; }
+
+    /* Drawer toggle (mobile) */
+    #drawer-toggle { display: none; padding: 4px 10px; cursor: pointer; border: 1px solid #ccc; border-radius: 4px; background: #fff; font-size: 18px; line-height: 1; }
+
+    /* Summary panel */
+    #summary-panel { display: flex; gap: 12px; padding: 12px 16px; border-bottom: 1px solid #ddd; background: #fafbfc; }
+    .summary-card { flex: 1; background: #fff; border: 1px solid #e0e0e0; border-radius: 8px; padding: 12px 16px; text-align: center; min-width: 120px; }
+    .summary-card .label { font-size: 11px; color: #888; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 4px; }
+    .summary-card .value { font-size: 24px; font-weight: bold; color: #333; }
+    .summary-card .value.delayed { color: var(--color-critical); }
+    .summary-card .value.good { color: var(--color-progress); }
+
+    /* Chart container */
     #chart-container { display: flex; overflow: auto; position: relative; }
-    #sidebar { min-width: var(--sidebar-width); max-width: var(--sidebar-width); border-right: 2px solid #ccc; }
+    #sidebar { min-width: var(--sidebar-width); max-width: var(--sidebar-width); border-right: 2px solid #ccc; z-index: 5; background: #fff; }
     #sidebar-header { height: var(--header-height); border-bottom: 1px solid #ddd; padding: 0 8px; display: flex; align-items: center; font-weight: bold; }
-    .sidebar-row { height: var(--row-height); display: flex; align-items: center; padding: 0 8px; border-bottom: 1px solid #f0f0f0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .sidebar-row { height: var(--row-height); display: flex; align-items: center; padding: 0 8px; border-bottom: 1px solid #f0f0f0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; cursor: pointer; transition: background 0.15s; }
+    .sidebar-row:hover { background: #f8f9fa; }
     .sidebar-row.warning { outline: 2px solid var(--color-warning); outline-offset: -2px; }
-    .sidebar-group { height: var(--row-height); display: flex; align-items: center; padding: 0 8px; background: var(--color-group-bg); font-weight: bold; cursor: pointer; border-bottom: 1px solid #ddd; }
-    .sidebar-group::before { content: "▼"; margin-right: 6px; font-size: 10px; transition: transform 0.2s; }
+    .sidebar-row.delayed { background: repeating-linear-gradient(135deg, transparent, transparent 4px, rgba(231,76,60,0.06) 4px, rgba(231,76,60,0.06) 8px); outline: 1px solid rgba(231,76,60,0.3); outline-offset: -1px; }
+    .sidebar-row.filtered-out { opacity: 0.3; }
+    .sidebar-group { height: var(--row-height); display: flex; align-items: center; padding: 0 8px; background: var(--color-group-bg); font-weight: bold; cursor: pointer; border-bottom: 1px solid #ddd; border-left: 4px solid transparent; }
+    .sidebar-group.group-color-0 { border-left-color: hsl(210, 70%, 50%); }
+    .sidebar-group.group-color-1 { border-left-color: hsl(150, 70%, 40%); }
+    .sidebar-group.group-color-2 { border-left-color: hsl(30, 80%, 50%); }
+    .sidebar-group.group-color-3 { border-left-color: hsl(330, 70%, 50%); }
+    .sidebar-group.group-color-4 { border-left-color: hsl(270, 60%, 50%); }
+    .sidebar-group::before { content: "\25BC"; margin-right: 6px; font-size: 10px; transition: transform 0.2s; }
     .sidebar-group.collapsed::before { transform: rotate(-90deg); }
     .task-name { margin-right: 8px; }
     .task-assignee { color: #888; font-size: 11px; }
+    .milestone-badge { font-size: 10px; color: var(--color-milestone); margin-left: 6px; font-weight: bold; white-space: nowrap; }
+
+    /* Timeline */
     #timeline { flex: 1; overflow-x: auto; position: relative; }
     #timeline-header { height: var(--header-height); border-bottom: 1px solid #ddd; position: relative; }
     .header-cell { position: absolute; height: 100%; display: flex; align-items: center; justify-content: center; border-right: 1px solid var(--color-grid); font-size: 11px; color: #666; }
     #timeline-body { position: relative; }
     .timeline-row { height: var(--row-height); position: relative; border-bottom: 1px solid #f0f0f0; }
     .timeline-row.group-row { background: var(--color-group-bg); }
-    .task-bar { position: absolute; height: var(--bar-height); top: calc((var(--row-height) - var(--bar-height)) / 2); border-radius: 3px; background: var(--color-bar); min-width: 2px; }
+    .timeline-row.filtered-out { opacity: 0.3; }
+
+    /* Weekend columns */
+    .weekend-col { position: absolute; top: 0; bottom: 0; background: rgba(0,0,0,0.04); pointer-events: none; }
+
+    /* Task bars */
+    .task-bar { position: absolute; height: var(--bar-height); top: calc((var(--row-height) - var(--bar-height)) / 2); border-radius: 3px; background: var(--color-bar); min-width: 2px; cursor: pointer; transition: filter 0.15s, transform 0.1s; }
+    .task-bar:hover { filter: brightness(1.1); transform: scaleY(1.08); z-index: 2; }
     .task-bar.critical { background: var(--color-critical); }
     .task-bar.warning { outline: 2px solid var(--color-warning); outline-offset: 1px; }
+    .task-bar.delayed { background: repeating-linear-gradient(135deg, var(--color-bar), var(--color-bar) 4px, rgba(255,255,255,0.3) 4px, rgba(255,255,255,0.3) 8px); outline: 2px solid rgba(231,76,60,0.5); outline-offset: 1px; }
+    .task-bar.critical.delayed { background: repeating-linear-gradient(135deg, var(--color-critical), var(--color-critical) 4px, rgba(255,255,255,0.3) 4px, rgba(255,255,255,0.3) 8px); }
+    .task-bar.dep-highlight { filter: brightness(1.2); box-shadow: 0 0 8px rgba(74,144,217,0.6); z-index: 3; }
     .progress-fill { height: 100%; border-radius: 3px; background: var(--color-progress); opacity: 0.7; }
-    .milestone-marker { position: absolute; top: calc((var(--row-height) - 16px) / 2); width: 16px; height: 16px; background: var(--color-milestone); transform: rotate(45deg); }
-    .today-line { position: absolute; top: 0; bottom: 0; width: 2px; background: var(--color-today); z-index: 10; pointer-events: none; }
-    .today-label { position: absolute; top: 2px; font-size: 10px; color: var(--color-today); white-space: nowrap; transform: translateX(-50%); }
+    .progress-text { position: absolute; right: 4px; top: 50%; transform: translateY(-50%); font-size: 10px; color: #fff; font-weight: bold; text-shadow: 0 1px 1px rgba(0,0,0,0.3); pointer-events: none; }
+
+    /* Milestone */
+    .milestone-marker { position: absolute; top: calc((var(--row-height) - 16px) / 2); width: 16px; height: 16px; background: var(--color-milestone); transform: rotate(45deg); cursor: pointer; }
+
+    /* Today line - enhanced */
+    .today-line { position: absolute; top: 0; bottom: 0; width: 3px; background: var(--color-today); z-index: 10; pointer-events: none; box-shadow: 0 0 6px rgba(231,76,60,0.4); }
+    .today-label { position: absolute; top: 2px; font-size: 10px; color: #fff; background: var(--color-today); padding: 1px 6px; border-radius: 3px; white-space: nowrap; transform: translateX(-50%); z-index: 11; }
+
+    /* Grid lines */
     .grid-line { position: absolute; top: 0; bottom: 0; width: 1px; background: var(--color-grid); pointer-events: none; }
+
+    /* Arrows */
     svg.arrows { position: absolute; top: 0; left: 0; pointer-events: none; }
     svg.arrows line { stroke: #999; stroke-width: 1.5; }
+    svg.arrows line.dep-highlight { stroke: #4a90d9; stroke-width: 2.5; }
     svg.arrows polygon { fill: #999; }
+    svg.arrows polygon.dep-highlight { fill: #4a90d9; }
+
     .hidden { display: none; }
+
+    /* Popover */
+    #popover { position: fixed; background: #fff; border: 1px solid #ddd; border-radius: 8px; padding: 16px; box-shadow: 0 4px 20px rgba(0,0,0,0.15); z-index: 100; max-width: 320px; min-width: 220px; display: none; font-size: 13px; }
+    #popover .popover-title { font-weight: bold; font-size: 15px; margin-bottom: 8px; }
+    #popover .popover-row { display: flex; justify-content: space-between; padding: 3px 0; }
+    #popover .popover-label { color: #888; }
+    #popover .popover-value { font-weight: 500; }
+    #popover .popover-progress-bar { height: 6px; background: #eee; border-radius: 3px; margin-top: 8px; overflow: hidden; }
+    #popover .popover-progress-fill { height: 100%; background: var(--color-progress); border-radius: 3px; }
+
+    /* Tooltip */
+    #tooltip { position: fixed; background: #333; color: #fff; padding: 4px 10px; border-radius: 4px; font-size: 11px; z-index: 101; pointer-events: none; display: none; white-space: nowrap; }
+
+    /* Drawer overlay (mobile) */
+    #drawer-overlay { display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.4); z-index: 50; }
+
+    /* Assignee highlight */
+    .assignee-highlight .sidebar-row:not(.assignee-match) { opacity: 0.3; }
+    .assignee-highlight .timeline-row:not(.assignee-match) { opacity: 0.3; }
+
+    /* Responsive */
+    @media (max-width: 768px) {
+      :root {
+        --row-height: 48px;
+        --bar-height: 32px;
+      }
+      body { font-size: 15px; }
+      #drawer-toggle { display: inline-block; }
+      #sidebar {
+        position: fixed;
+        top: 0;
+        left: 0;
+        bottom: 0;
+        z-index: 60;
+        transform: translateX(-100%);
+        transition: transform 0.3s ease;
+        box-shadow: 2px 0 12px rgba(0,0,0,0.2);
+      }
+      #sidebar.drawer-open { transform: translateX(0); }
+      #drawer-overlay.visible { display: block; }
+      #summary-panel { flex-wrap: wrap; }
+      .summary-card { min-width: 90px; flex-basis: calc(33% - 8px); }
+      .summary-card .value { font-size: 20px; }
+      #controls { padding: 8px 12px; gap: 8px; }
+      .controls-separator { display: none; }
+    }
+
+    /* Pinch zoom container */
+    #timeline-body.pinch-zoom { transform-origin: 0 0; }
+
+    /* Load view */
+    #load-view { display: none; padding: 16px; border-top: 1px solid #ddd; }
+    #load-view.active { display: block; }
+    .load-assignee { margin-bottom: 12px; }
+    .load-assignee-name { font-weight: bold; margin-bottom: 4px; }
+    .load-bar-container { position: relative; height: 24px; background: #f0f0f0; border-radius: 3px; overflow: hidden; }
+    .load-bar-task { position: absolute; height: 100%; border-radius: 3px; opacity: 0.8; display: flex; align-items: center; padding: 0 4px; font-size: 10px; color: #fff; overflow: hidden; white-space: nowrap; }
   </style>
 </head>
 <body>
   <div id="controls">
+    <button id="drawer-toggle">&#9776;</button>
     <span id="project-name"></span>
+    <div class="controls-separator"></div>
     <button id="btn-day" class="active">日</button>
     <button id="btn-week">週</button>
+    <button id="btn-month">月</button>
+    <div class="controls-separator"></div>
+    <button id="btn-today">Today</button>
+    <button id="btn-expand-all">全展開</button>
+    <button id="btn-collapse-all">全折りたたみ</button>
+    <div class="controls-separator"></div>
+    <select id="filter-assignee"><option value="">担当者: 全て</option></select>
+    <select id="filter-group"><option value="">グループ: 全て</option></select>
+    <select id="filter-status">
+      <option value="">ステータス: 全て</option>
+      <option value="delayed">遅延のみ</option>
+      <option value="critical">CP のみ</option>
+    </select>
+    <div class="controls-separator"></div>
+    <button id="btn-load-view">負荷ビュー</button>
+  </div>
+  <div id="summary-panel">
+    <div class="summary-card">
+      <div class="label">全体進捗</div>
+      <div class="value" id="summary-progress">-</div>
+    </div>
+    <div class="summary-card">
+      <div class="label">遅延タスク</div>
+      <div class="value" id="summary-delayed">-</div>
+    </div>
+    <div class="summary-card">
+      <div class="label">CP 残日数</div>
+      <div class="value" id="summary-critical-days">-</div>
+    </div>
   </div>
   <div id="chart-container">
     <div id="sidebar">
@@ -74,8 +214,15 @@
       <div id="timeline-body"></div>
     </div>
   </div>
+  <div id="load-view">
+    <div id="load-view-content"></div>
+  </div>
+  <div id="drawer-overlay"></div>
+  <div id="popover"></div>
+  <div id="tooltip"></div>
   <script src="gantt-core.js"></script>
   <script src="gantt-render.js"></script>
+  <script src="gantt-ui.js"></script>
   <script>
     GanttRender.init('gantt.yaml');
   </script>
