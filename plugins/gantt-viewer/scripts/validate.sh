@@ -1,6 +1,5 @@
 #!/usr/bin/env bash
 
-errors=0
 SCRIPTS_DIR="$(dirname "$0")"
 
 echo "=== gantt-viewer plugin: validation ==="
@@ -8,21 +7,34 @@ echo "=== gantt-viewer plugin: validation ==="
 echo ""
 echo "--- npm dependencies ---"
 
+if [ ! -d "${SCRIPTS_DIR}/node_modules" ]; then
+  echo "[INFO] node_modules が見つかりません。npm install を実行します..."
+  if (cd "${SCRIPTS_DIR}" && npm install --no-fund --no-audit 2>&1); then
+    echo "[OK] npm install 完了"
+  else
+    echo "[ERROR] npm install に失敗しました"
+    echo "  手動で以下を実行してください:"
+    echo ""
+    echo "  cd \"${SCRIPTS_DIR}\" && npm install"
+    echo ""
+    exit 1
+  fi
+fi
+
 if [ -d "${SCRIPTS_DIR}/node_modules/js-yaml" ]; then
   echo "[OK] js-yaml installed"
 else
-  echo "[ERROR] js-yaml が見つかりません"
-  echo "  以下のコマンドでインストールしてください:"
-  echo ""
-  echo "  npm install --prefix \"${SCRIPTS_DIR}\""
-  echo ""
-  errors=$((errors + 1))
-fi
-
-if [ "$errors" -gt 0 ]; then
-  echo ""
-  echo "WARNING: ${errors} 個の問題が見つかりました。"
-  exit 0
+  echo "[ERROR] js-yaml が見つかりません。npm install を再実行します..."
+  if (cd "${SCRIPTS_DIR}" && npm install --no-fund --no-audit 2>&1); then
+    echo "[OK] npm install 完了"
+  else
+    echo "[ERROR] npm install に失敗しました"
+    echo "  手動で以下を実行してください:"
+    echo ""
+    echo "  cd \"${SCRIPTS_DIR}\" && npm install"
+    echo ""
+    exit 1
+  fi
 fi
 
 echo ""
