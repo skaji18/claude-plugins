@@ -132,6 +132,49 @@ export function checkDelayedTasks(tasks, today) {
   return results;
 }
 
+export function checkStatusContradictions(tasks) {
+  const results = [];
+
+  for (const task of tasks) {
+    if (task.actual_end_date && task.progress < 100) {
+      results.push({
+        level: 'ERROR',
+        type: 'status_contradiction',
+        taskId: task.id,
+        message: `"${task.id}" は actual_end_date (${task.actual_end_date}) が設定済みだが progress が ${task.progress}（100 未満）`,
+      });
+    }
+  }
+
+  return results;
+}
+
+export function checkActualDateConsistency(tasks) {
+  const results = [];
+
+  for (const task of tasks) {
+    if (task.actual_start_date && task.actual_end_date && task.actual_start_date > task.actual_end_date) {
+      results.push({
+        level: 'ERROR',
+        type: 'actual_date_contradiction',
+        taskId: task.id,
+        message: `"${task.id}" の actual_start_date (${task.actual_start_date}) > actual_end_date (${task.actual_end_date})`,
+      });
+    }
+
+    if (task.actual_end_date && !task.actual_start_date) {
+      results.push({
+        level: 'WARN',
+        type: 'actual_date_incomplete',
+        taskId: task.id,
+        message: `"${task.id}" は actual_end_date (${task.actual_end_date}) があるが actual_start_date が未設定`,
+      });
+    }
+  }
+
+  return results;
+}
+
 export function runAllChecks(tasks, today) {
   return [
     ...checkCircularDependencies(tasks),
@@ -139,5 +182,7 @@ export function runAllChecks(tasks, today) {
     ...checkDateContradictions(tasks),
     ...checkInvalidReferences(tasks),
     ...checkDelayedTasks(tasks, today),
+    ...checkStatusContradictions(tasks),
+    ...checkActualDateConsistency(tasks),
   ];
 }

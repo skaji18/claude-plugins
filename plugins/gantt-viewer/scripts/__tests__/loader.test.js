@@ -480,5 +480,187 @@ describe('loader', () => {
       const result = loadTasks(yamlPath('no-members.yaml'));
       assert.equal(result.members, null);
     });
+
+    // --- Unknown field rejection ---
+
+    it('should throw when task has an unknown field', () => {
+      // Given: a task with a typo field "progrss"
+      const yaml = buildYaml([VALID_TASK]).replace('    milestone: false', '    milestone: false\n    progrss: 50');
+      writeYaml('unknown-field.yaml', yaml);
+
+      // When / Then
+      assert.throws(
+        () => loadTasks(yamlPath('unknown-field.yaml')),
+        (err) => err.message.includes('unknown field "progrss"') && err.message.includes('progress')
+      );
+    });
+
+    it('should throw when task has a completely unknown field', () => {
+      // Given: a field that doesn't resemble anything
+      const yaml = buildYaml([VALID_TASK]).replace('    milestone: false', '    milestone: false\n    xyzzy: 42');
+      writeYaml('totally-unknown.yaml', yaml);
+
+      // When / Then
+      assert.throws(
+        () => loadTasks(yamlPath('totally-unknown.yaml')),
+        (err) => err.message.includes('unknown field "xyzzy"')
+      );
+    });
+
+    // --- Type checks ---
+
+    it('should throw when assignee is not a string', () => {
+      // Given
+      const yaml = [
+        'project:',
+        '  name: "Test"',
+        'tasks:',
+        '  - id: "t1"',
+        '    name: "Task"',
+        '    assignee: 123',
+        '    effort: 1',
+        '    start_date: "2026-04-10"',
+        '    end_date: "2026-04-11"',
+        '    progress: 0',
+        '    depends_on: []',
+        '    group: "G"',
+        '    milestone: false',
+      ].join('\n');
+      writeYaml('bad-assignee-type.yaml', yaml);
+
+      // When / Then
+      assert.throws(
+        () => loadTasks(yamlPath('bad-assignee-type.yaml')),
+        (err) => err.message.includes('assignee') && err.message.includes('string')
+      );
+    });
+
+    it('should throw when group is not a string', () => {
+      // Given
+      const yaml = [
+        'project:',
+        '  name: "Test"',
+        'tasks:',
+        '  - id: "t1"',
+        '    name: "Task"',
+        '    assignee: "A"',
+        '    effort: 1',
+        '    start_date: "2026-04-10"',
+        '    end_date: "2026-04-11"',
+        '    progress: 0',
+        '    depends_on: []',
+        '    group: 123',
+        '    milestone: false',
+      ].join('\n');
+      writeYaml('bad-group-type.yaml', yaml);
+
+      // When / Then
+      assert.throws(
+        () => loadTasks(yamlPath('bad-group-type.yaml')),
+        (err) => err.message.includes('group') && err.message.includes('string')
+      );
+    });
+
+    it('should throw when milestone is not a boolean', () => {
+      // Given
+      const yaml = [
+        'project:',
+        '  name: "Test"',
+        'tasks:',
+        '  - id: "t1"',
+        '    name: "Task"',
+        '    assignee: "A"',
+        '    effort: 1',
+        '    start_date: "2026-04-10"',
+        '    end_date: "2026-04-11"',
+        '    progress: 0',
+        '    depends_on: []',
+        '    group: "G"',
+        '    milestone: "no"',
+      ].join('\n');
+      writeYaml('bad-milestone-type.yaml', yaml);
+
+      // When / Then
+      assert.throws(
+        () => loadTasks(yamlPath('bad-milestone-type.yaml')),
+        (err) => err.message.includes('milestone') && err.message.includes('boolean')
+      );
+    });
+
+    it('should throw when depends_on contains non-string elements', () => {
+      // Given
+      const yaml = [
+        'project:',
+        '  name: "Test"',
+        'tasks:',
+        '  - id: "t1"',
+        '    name: "Task"',
+        '    assignee: "A"',
+        '    effort: 1',
+        '    start_date: "2026-04-10"',
+        '    end_date: "2026-04-11"',
+        '    progress: 0',
+        '    depends_on: [123]',
+        '    group: "G"',
+        '    milestone: false',
+      ].join('\n');
+      writeYaml('bad-depends-on-type.yaml', yaml);
+
+      // When / Then
+      assert.throws(
+        () => loadTasks(yamlPath('bad-depends-on-type.yaml')),
+        (err) => err.message.includes('depends_on') && err.message.includes('string')
+      );
+    });
+
+    // --- Date validity checks ---
+
+    it('should throw when start_date is not a real calendar date (Feb 30)', () => {
+      // Given
+      const task = { ...VALID_TASK, start_date: '2026-02-30' };
+      writeYaml('invalid-date-feb30.yaml', buildYaml([task]));
+
+      // When / Then
+      assert.throws(
+        () => loadTasks(yamlPath('invalid-date-feb30.yaml')),
+        (err) => err.message.includes('2026-02-30') && err.message.includes('not a valid calendar date')
+      );
+    });
+
+    it('should throw when end_date has month 13', () => {
+      // Given
+      const task = { ...VALID_TASK, end_date: '2026-13-01' };
+      writeYaml('invalid-date-month13.yaml', buildYaml([task]));
+
+      // When / Then
+      assert.throws(
+        () => loadTasks(yamlPath('invalid-date-month13.yaml')),
+        (err) => err.message.includes('2026-13-01') && err.message.includes('not a valid calendar date')
+      );
+    });
+
+    it('should throw when actual_start_date is not a real calendar date', () => {
+      // Given
+      const yaml = buildYaml([VALID_TASK]).replace('    milestone: false', '    milestone: false\n    actual_start_date: "2026-04-31"');
+      writeYaml('invalid-actual-start.yaml', yaml);
+
+      // When / Then
+      assert.throws(
+        () => loadTasks(yamlPath('invalid-actual-start.yaml')),
+        (err) => err.message.includes('2026-04-31') && err.message.includes('not a valid calendar date')
+      );
+    });
+
+    it('should throw when actual_end_date is not a real calendar date', () => {
+      // Given
+      const yaml = buildYaml([VALID_TASK]).replace('    milestone: false', '    milestone: false\n    actual_end_date: "2026-06-31"');
+      writeYaml('invalid-actual-end.yaml', yaml);
+
+      // When / Then
+      assert.throws(
+        () => loadTasks(yamlPath('invalid-actual-end.yaml')),
+        (err) => err.message.includes('2026-06-31') && err.message.includes('not a valid calendar date')
+      );
+    });
   });
 });

@@ -7,6 +7,8 @@ import {
   checkInvalidReferences,
   checkDelayedTasks,
   checkCircularDependencies,
+  checkStatusContradictions,
+  checkActualDateConsistency,
   runAllChecks,
 } from '../lib/validator.js';
 
@@ -300,6 +302,138 @@ describe('validator', () => {
     });
   });
 
+  describe('checkStatusContradictions', () => {
+    it('should return empty array when no contradictions exist', () => {
+      // Given
+      const tasks = [
+        makeTask({ id: 'a', progress: 100, actual_end_date: '2026-04-14' }),
+        makeTask({ id: 'b', progress: 50 }),
+      ];
+
+      // When
+      const results = checkStatusContradictions(tasks);
+
+      // Then
+      assert.equal(results.length, 0);
+    });
+
+    it('should detect actual_end_date set but progress < 100', () => {
+      // Given
+      const tasks = [
+        makeTask({ id: 'x', progress: 80, actual_end_date: '2026-04-14' }),
+      ];
+
+      // When
+      const results = checkStatusContradictions(tasks);
+
+      // Then
+      assert.equal(results.length, 1);
+      assert.equal(results[0].level, 'ERROR');
+      assert.equal(results[0].type, 'status_contradiction');
+      assert.equal(results[0].taskId, 'x');
+      assert.ok(results[0].message.includes('80'));
+    });
+
+    it('should not flag task without actual_end_date', () => {
+      // Given
+      const tasks = [
+        makeTask({ id: 'a', progress: 50 }),
+      ];
+
+      // When
+      const results = checkStatusContradictions(tasks);
+
+      // Then
+      assert.equal(results.length, 0);
+    });
+
+    it('should not flag completed task with actual_end_date', () => {
+      // Given
+      const tasks = [
+        makeTask({ id: 'a', progress: 100, actual_end_date: '2026-04-14' }),
+      ];
+
+      // When
+      const results = checkStatusContradictions(tasks);
+
+      // Then
+      assert.equal(results.length, 0);
+    });
+  });
+
+  describe('checkActualDateConsistency', () => {
+    it('should return empty array when actual dates are consistent', () => {
+      // Given
+      const tasks = [
+        makeTask({ id: 'a', actual_start_date: '2026-04-10', actual_end_date: '2026-04-14' }),
+      ];
+
+      // When
+      const results = checkActualDateConsistency(tasks);
+
+      // Then
+      assert.equal(results.length, 0);
+    });
+
+    it('should detect actual_start_date > actual_end_date', () => {
+      // Given
+      const tasks = [
+        makeTask({ id: 'a', actual_start_date: '2026-04-20', actual_end_date: '2026-04-14' }),
+      ];
+
+      // When
+      const results = checkActualDateConsistency(tasks);
+
+      // Then
+      assert.equal(results.length, 1);
+      assert.equal(results[0].level, 'ERROR');
+      assert.equal(results[0].type, 'actual_date_contradiction');
+      assert.equal(results[0].taskId, 'a');
+    });
+
+    it('should warn when actual_end_date set without actual_start_date', () => {
+      // Given
+      const tasks = [
+        makeTask({ id: 'b', actual_end_date: '2026-04-14' }),
+      ];
+
+      // When
+      const results = checkActualDateConsistency(tasks);
+
+      // Then
+      assert.equal(results.length, 1);
+      assert.equal(results[0].level, 'WARN');
+      assert.equal(results[0].type, 'actual_date_incomplete');
+      assert.equal(results[0].taskId, 'b');
+    });
+
+    it('should not warn when only actual_start_date is set', () => {
+      // Given
+      const tasks = [
+        makeTask({ id: 'c', actual_start_date: '2026-04-10' }),
+      ];
+
+      // When
+      const results = checkActualDateConsistency(tasks);
+
+      // Then
+      assert.equal(results.length, 0);
+    });
+
+    it('should allow same actual_start_date and actual_end_date', () => {
+      // Given
+      const tasks = [
+        makeTask({ id: 'd', actual_start_date: '2026-04-14', actual_end_date: '2026-04-14' }),
+      ];
+
+      // When
+      const results = checkActualDateConsistency(tasks);
+
+      // Then
+      assert.equal(results.length, 0);
+    });
+  });
+
   describe('runAllChecks', () => {
     it('should aggregate results from all checks', () => {
       // Given: tasks with multiple issues
@@ -355,6 +489,24 @@ describe('validator', () => {
       // Then
       const circularResults = results.filter((r) => r.type === 'circular_dependency');
       assert.ok(circularResults.length >= 1);
+    });
+
+    it('should include status contradiction and actual date consistency results', () => {
+      // Given
+      const today = '2026-04-01';
+      const tasks = [
+        makeTask({ id: 'a', start_date: '2026-04-10', end_date: '2026-04-14', progress: 50, actual_end_date: '2026-04-14' }),
+        makeTask({ id: 'b', start_date: '2026-04-15', end_date: '2026-04-18', depends_on: ['a'], actual_start_date: '2026-04-20', actual_end_date: '2026-04-16' }),
+      ];
+
+      // When
+      const results = runAllChecks(tasks, today);
+
+      // Then
+      const statusResults = results.filter((r) => r.type === 'status_contradiction');
+      assert.ok(statusResults.length >= 1);
+      const actualDateResults = results.filter((r) => r.type === 'actual_date_contradiction');
+      assert.ok(actualDateResults.length >= 1);
     });
 
     it('should not include critical path info in results', () => {
