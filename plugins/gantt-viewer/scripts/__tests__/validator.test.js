@@ -9,6 +9,9 @@ import {
   checkCircularDependencies,
   checkStatusContradictions,
   checkActualDateConsistency,
+  checkSelfDependencies,
+  checkDuplicateDependencies,
+  checkMilestoneDateMismatch,
   runAllChecks,
 } from '../lib/validator.js';
 
@@ -434,6 +437,103 @@ describe('validator', () => {
     });
   });
 
+  describe('checkSelfDependencies', () => {
+    it('should return empty array when no self-dependencies exist', () => {
+      const tasks = [
+        makeTask({ id: 'a', depends_on: [] }),
+        makeTask({ id: 'b', depends_on: ['a'] }),
+      ];
+      const results = checkSelfDependencies(tasks);
+      assert.equal(results.length, 0);
+    });
+
+    it('should detect task depending on itself', () => {
+      const tasks = [
+        makeTask({ id: 'a', depends_on: ['a'] }),
+      ];
+      const results = checkSelfDependencies(tasks);
+      assert.equal(results.length, 1);
+      assert.equal(results[0].level, 'ERROR');
+      assert.equal(results[0].type, 'self_dependency');
+      assert.equal(results[0].taskId, 'a');
+      assert.ok(results[0].message.includes('depends on itself'));
+    });
+
+    it('should detect self-dependency among other dependencies', () => {
+      const tasks = [
+        makeTask({ id: 'b', depends_on: ['a', 'b', 'c'] }),
+        makeTask({ id: 'a', depends_on: [] }),
+        makeTask({ id: 'c', depends_on: [] }),
+      ];
+      const results = checkSelfDependencies(tasks);
+      assert.equal(results.length, 1);
+      assert.equal(results[0].taskId, 'b');
+    });
+  });
+
+  describe('checkDuplicateDependencies', () => {
+    it('should return empty array when no duplicates exist', () => {
+      const tasks = [
+        makeTask({ id: 'a', depends_on: [] }),
+        makeTask({ id: 'b', depends_on: ['a'] }),
+      ];
+      const results = checkDuplicateDependencies(tasks);
+      assert.equal(results.length, 0);
+    });
+
+    it('should detect duplicate dependency', () => {
+      const tasks = [
+        makeTask({ id: 'a', depends_on: [] }),
+        makeTask({ id: 'b', depends_on: ['a', 'a'] }),
+      ];
+      const results = checkDuplicateDependencies(tasks);
+      assert.equal(results.length, 1);
+      assert.equal(results[0].level, 'WARN');
+      assert.equal(results[0].type, 'duplicate_dependency');
+      assert.equal(results[0].taskId, 'b');
+      assert.ok(results[0].message.includes('a'));
+    });
+
+    it('should detect multiple duplicates', () => {
+      const tasks = [
+        makeTask({ id: 'c', depends_on: ['a', 'b', 'a', 'b'] }),
+        makeTask({ id: 'a', depends_on: [] }),
+        makeTask({ id: 'b', depends_on: [] }),
+      ];
+      const results = checkDuplicateDependencies(tasks);
+      assert.equal(results.length, 2);
+    });
+  });
+
+  describe('checkMilestoneDateMismatch', () => {
+    it('should return empty array when milestone has matching dates', () => {
+      const tasks = [
+        makeTask({ id: 'a', milestone: true, start_date: '2026-04-14', end_date: '2026-04-14' }),
+      ];
+      const results = checkMilestoneDateMismatch(tasks);
+      assert.equal(results.length, 0);
+    });
+
+    it('should warn when milestone has different start and end dates', () => {
+      const tasks = [
+        makeTask({ id: 'a', milestone: true, start_date: '2026-04-14', end_date: '2026-04-16' }),
+      ];
+      const results = checkMilestoneDateMismatch(tasks);
+      assert.equal(results.length, 1);
+      assert.equal(results[0].level, 'WARN');
+      assert.equal(results[0].type, 'milestone_date_mismatch');
+      assert.equal(results[0].taskId, 'a');
+    });
+
+    it('should not warn for non-milestone tasks', () => {
+      const tasks = [
+        makeTask({ id: 'a', milestone: false, start_date: '2026-04-14', end_date: '2026-04-16' }),
+      ];
+      const results = checkMilestoneDateMismatch(tasks);
+      assert.equal(results.length, 0);
+    });
+  });
+
   describe('runAllChecks', () => {
     it('should aggregate results from all checks', () => {
       // Given: tasks with multiple issues
@@ -507,6 +607,52 @@ describe('validator', () => {
       assert.ok(statusResults.length >= 1);
       const actualDateResults = results.filter((r) => r.type === 'actual_date_contradiction');
       assert.ok(actualDateResults.length >= 1);
+    });
+
+    it('should include self-dependency results', () => {
+      // Given
+      const today = '2026-04-01';
+      const tasks = [
+        makeTask({ id: 'a', start_date: '2026-04-10', end_date: '2026-04-14', depends_on: ['a'] }),
+      ];
+
+      // When
+      const results = runAllChecks(tasks, today);
+
+      // Then
+      const selfDepResults = results.filter((r) => r.type === 'self_dependency');
+      assert.ok(selfDepResults.length >= 1);
+    });
+
+    it('should include duplicate dependency results', () => {
+      // Given
+      const today = '2026-04-01';
+      const tasks = [
+        makeTask({ id: 'a', start_date: '2026-04-10', end_date: '2026-04-14' }),
+        makeTask({ id: 'b', start_date: '2026-04-15', end_date: '2026-04-18', depends_on: ['a', 'a'] }),
+      ];
+
+      // When
+      const results = runAllChecks(tasks, today);
+
+      // Then
+      const dupResults = results.filter((r) => r.type === 'duplicate_dependency');
+      assert.ok(dupResults.length >= 1);
+    });
+
+    it('should include milestone date mismatch results', () => {
+      // Given
+      const today = '2026-04-01';
+      const tasks = [
+        makeTask({ id: 'a', milestone: true, start_date: '2026-04-10', end_date: '2026-04-14' }),
+      ];
+
+      // When
+      const results = runAllChecks(tasks, today);
+
+      // Then
+      const milestoneResults = results.filter((r) => r.type === 'milestone_date_mismatch');
+      assert.ok(milestoneResults.length >= 1);
     });
 
     it('should not include critical path info in results', () => {

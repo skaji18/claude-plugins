@@ -31,12 +31,17 @@ const VALID_TASK = {
 
 function buildYaml(tasks, projectName, options) {
   const project = `project:\n  name: "${projectName || 'Test Project'}"\n`;
+  // Collect all unique assignees and groups from tasks as defaults
+  const defaultMembers = [...new Set(tasks.map((t) => t.assignee))];
+  const defaultGroups = [...new Set(tasks.map((t) => t.group))];
+  const membersArr = (options && options.members) || defaultMembers;
+  const groupsArr = (options && options.groups) || defaultGroups;
   let extra = '';
-  if (options && options.members) {
-    extra += 'members:\n' + options.members.map((m) => `  - "${m}"`).join('\n') + '\n';
+  if (!options || !options.skipMembers) {
+    extra += 'members:\n' + membersArr.map((m) => `  - "${m}"`).join('\n') + '\n';
   }
-  if (options && options.groups) {
-    extra += 'groups:\n' + options.groups.map((g) => `  - "${g}"`).join('\n') + '\n';
+  if (!options || !options.skipGroups) {
+    extra += 'groups:\n' + groupsArr.map((g) => `  - "${g}"`).join('\n') + '\n';
   }
   const taskLines = tasks.map((t) => {
     const lines = [
@@ -297,7 +302,7 @@ describe('loader', () => {
       );
     });
 
-    it('should throw when effort is not a positive number', () => {
+    it('should throw when effort is not a positive number for non-milestone', () => {
       // Given
       const task = { ...VALID_TASK, effort: 0 };
       writeYaml('zero-effort.yaml', buildYaml([task]));
@@ -306,6 +311,31 @@ describe('loader', () => {
       assert.throws(
         () => loadTasks(yamlPath('zero-effort.yaml')),
         (err) => err instanceof Error
+      );
+    });
+
+    it('should allow effort=0 for milestone tasks', () => {
+      // Given
+      const task = { ...VALID_TASK, effort: 0, milestone: true, start_date: '2026-04-14', end_date: '2026-04-14' };
+      writeYaml('milestone-zero-effort.yaml', buildYaml([task]));
+
+      // When
+      const result = loadTasks(yamlPath('milestone-zero-effort.yaml'));
+
+      // Then
+      assert.equal(result.tasks[0].effort, 0);
+      assert.equal(result.tasks[0].milestone, true);
+    });
+
+    it('should reject negative effort for milestone tasks', () => {
+      // Given
+      const task = { ...VALID_TASK, effort: -1, milestone: true, start_date: '2026-04-14', end_date: '2026-04-14' };
+      writeYaml('milestone-neg-effort.yaml', buildYaml([task]));
+
+      // When / Then
+      assert.throws(
+        () => loadTasks(yamlPath('milestone-neg-effort.yaml')),
+        (err) => err.message.includes('effort')
       );
     });
 
@@ -436,16 +466,52 @@ describe('loader', () => {
       assert.deepEqual(result.groups, ['Planning']);
     });
 
-    it('should return null for members and groups when not defined', () => {
+    it('should throw when members is missing', () => {
       // Given
-      writeYaml('no-members-groups.yaml', buildYaml([VALID_TASK]));
+      writeYaml('no-members.yaml', buildYaml([VALID_TASK], 'Test', { skipMembers: true }));
 
-      // When
-      const result = loadTasks(yamlPath('no-members-groups.yaml'));
+      // When / Then
+      assert.throws(
+        () => loadTasks(yamlPath('no-members.yaml')),
+        (err) => err.message.includes('members')
+      );
+    });
 
-      // Then
-      assert.equal(result.members, null);
-      assert.equal(result.groups, null);
+    it('should throw when groups is missing', () => {
+      // Given
+      writeYaml('no-groups.yaml', buildYaml([VALID_TASK], 'Test', { skipGroups: true }));
+
+      // When / Then
+      assert.throws(
+        () => loadTasks(yamlPath('no-groups.yaml')),
+        (err) => err.message.includes('groups')
+      );
+    });
+
+    it('should throw when members is an empty array', () => {
+      // Given
+      const yaml = 'project:\n  name: "Test"\nmembers: []\ngroups:\n  - "Planning"\ntasks:\n' +
+        '  - id: "t1"\n    name: "X"\n    assignee: "A"\n    effort: 1\n    start_date: "2026-04-10"\n    end_date: "2026-04-11"\n    progress: 0\n    depends_on: []\n    group: "Planning"\n    milestone: false';
+      writeYaml('empty-members.yaml', yaml);
+
+      // When / Then
+      assert.throws(
+        () => loadTasks(yamlPath('empty-members.yaml')),
+        (err) => err.message.includes('members') && err.message.includes('non-empty')
+      );
+    });
+
+    it('should throw when groups is an empty array', () => {
+      // Given
+      const yaml = 'project:\n  name: "Test"\nmembers:\n  - "A"\ngroups: []\ntasks:\n' +
+        '  - id: "t1"\n    name: "X"\n    assignee: "A"\n    effort: 1\n    start_date: "2026-04-10"\n    end_date: "2026-04-11"\n    progress: 0\n    depends_on: []\n    group: "Planning"\n    milestone: false';
+      writeYaml('empty-groups.yaml', yaml);
+
+      // When / Then
+      assert.throws(
+        () => loadTasks(yamlPath('empty-groups.yaml')),
+        (err) => err.message.includes('groups') && err.message.includes('non-empty')
+      );
     });
 
     it('should throw when assignee is not in members list', () => {
@@ -472,13 +538,14 @@ describe('loader', () => {
       );
     });
 
-    it('should skip assignee check when members is not defined', () => {
-      // Given: no members section, assignee can be anything
-      writeYaml('no-members.yaml', buildYaml([VALID_TASK]));
+    it('should validate assignee against members list', () => {
+      // Given: members list includes the assignee
+      const yaml = buildYaml([VALID_TASK], 'Test', { members: ['Tanaka'], groups: ['Planning'] });
+      writeYaml('valid-member-ref.yaml', yaml);
 
       // When / Then: should not throw
-      const result = loadTasks(yamlPath('no-members.yaml'));
-      assert.equal(result.members, null);
+      const result = loadTasks(yamlPath('valid-member-ref.yaml'));
+      assert.deepEqual(result.members, ['Tanaka']);
     });
 
     // --- Unknown field rejection ---
@@ -514,6 +581,10 @@ describe('loader', () => {
       const yaml = [
         'project:',
         '  name: "Test"',
+        'members:',
+        '  - "A"',
+        'groups:',
+        '  - "G"',
         'tasks:',
         '  - id: "t1"',
         '    name: "Task"',
@@ -540,6 +611,10 @@ describe('loader', () => {
       const yaml = [
         'project:',
         '  name: "Test"',
+        'members:',
+        '  - "A"',
+        'groups:',
+        '  - "G"',
         'tasks:',
         '  - id: "t1"',
         '    name: "Task"',
@@ -566,6 +641,10 @@ describe('loader', () => {
       const yaml = [
         'project:',
         '  name: "Test"',
+        'members:',
+        '  - "A"',
+        'groups:',
+        '  - "G"',
         'tasks:',
         '  - id: "t1"',
         '    name: "Task"',
@@ -592,6 +671,10 @@ describe('loader', () => {
       const yaml = [
         'project:',
         '  name: "Test"',
+        'members:',
+        '  - "A"',
+        'groups:',
+        '  - "G"',
         'tasks:',
         '  - id: "t1"',
         '    name: "Task"',

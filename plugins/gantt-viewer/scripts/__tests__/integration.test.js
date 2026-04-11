@@ -31,6 +31,16 @@ function runScript(script, yamlFile) {
 const VALID_YAML = `project:
   name: "Integration Test Project"
 
+members:
+  - "Tanaka"
+  - "Sato"
+  - "Suzuki"
+
+groups:
+  - "Planning"
+  - "Development"
+  - "QA"
+
 tasks:
   - id: "design"
     name: "Design"
@@ -66,6 +76,16 @@ tasks:
 
 const YAML_WITH_ERRORS = `project:
   name: "Error Project"
+
+members:
+  - "Tanaka"
+  - "Sato"
+  - "Admin"
+
+groups:
+  - "Planning"
+  - "Development"
+  - "Release"
 
 tasks:
   - id: "design"
@@ -166,6 +186,13 @@ describe('integration: check.js', () => {
     // Given: circular dependency makes critical path calculation fail
     const yaml = `project:
   name: "Circular"
+
+members:
+  - "X"
+  - "Y"
+
+groups:
+  - "G"
 
 tasks:
   - id: "a"

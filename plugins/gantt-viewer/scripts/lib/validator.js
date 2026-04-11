@@ -175,12 +175,70 @@ export function checkActualDateConsistency(tasks) {
   return results;
 }
 
+export function checkSelfDependencies(tasks) {
+  const results = [];
+
+  for (const task of tasks) {
+    if (task.depends_on.includes(task.id)) {
+      results.push({
+        level: 'ERROR',
+        type: 'self_dependency',
+        taskId: task.id,
+        message: `Task "${task.id}" depends on itself`,
+      });
+    }
+  }
+
+  return results;
+}
+
+export function checkDuplicateDependencies(tasks) {
+  const results = [];
+
+  for (const task of tasks) {
+    const seen = new Set();
+    for (const depId of task.depends_on) {
+      if (seen.has(depId)) {
+        results.push({
+          level: 'WARN',
+          type: 'duplicate_dependency',
+          taskId: task.id,
+          message: `"${task.id}" の depends_on に "${depId}" が重複`,
+        });
+      }
+      seen.add(depId);
+    }
+  }
+
+  return results;
+}
+
+export function checkMilestoneDateMismatch(tasks) {
+  const results = [];
+
+  for (const task of tasks) {
+    if (task.milestone && task.start_date !== task.end_date) {
+      results.push({
+        level: 'WARN',
+        type: 'milestone_date_mismatch',
+        taskId: task.id,
+        message: `マイルストーン "${task.id}" の start_date (${task.start_date}) と end_date (${task.end_date}) が異なる`,
+      });
+    }
+  }
+
+  return results;
+}
+
 export function runAllChecks(tasks, today) {
   return [
+    ...checkSelfDependencies(tasks),
     ...checkCircularDependencies(tasks),
     ...checkDependencyViolations(tasks),
     ...checkDateContradictions(tasks),
     ...checkInvalidReferences(tasks),
+    ...checkDuplicateDependencies(tasks),
+    ...checkMilestoneDateMismatch(tasks),
     ...checkDelayedTasks(tasks, today),
     ...checkStatusContradictions(tasks),
     ...checkActualDateConsistency(tasks),

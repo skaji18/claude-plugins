@@ -84,8 +84,18 @@ function validateTask(task, index) {
     throw new Error(`Task #${index + 1} ("${task.id}"): "assignee" must be a string`);
   }
 
-  if (typeof task.effort !== 'number' || task.effort <= 0) {
-    throw new Error(`Task #${index + 1} ("${task.id}"): "effort" must be a positive number`);
+  if (typeof task.milestone !== 'boolean') {
+    throw new Error(`Task #${index + 1} ("${task.id}"): "milestone" must be a boolean`);
+  }
+
+  if (task.milestone) {
+    if (typeof task.effort !== 'number' || task.effort < 0) {
+      throw new Error(`Task #${index + 1} ("${task.id}"): "effort" must be a non-negative number for milestones`);
+    }
+  } else {
+    if (typeof task.effort !== 'number' || task.effort <= 0) {
+      throw new Error(`Task #${index + 1} ("${task.id}"): "effort" must be a positive number`);
+    }
   }
 
   if (!DATE_PATTERN.test(task.start_date)) {
@@ -118,10 +128,6 @@ function validateTask(task, index) {
 
   if (typeof task.group !== 'string') {
     throw new Error(`Task #${index + 1} ("${task.id}"): "group" must be a string`);
-  }
-
-  if (typeof task.milestone !== 'boolean') {
-    throw new Error(`Task #${index + 1} ("${task.id}"): "milestone" must be a boolean`);
   }
 
   // Optional fields
@@ -194,42 +200,32 @@ export function loadTasks(filePath) {
     throw new Error('"tasks" must contain at least one task');
   }
 
-  // Parse optional members/groups sections
-  let members = null;
-  if (data.members !== undefined) {
-    if (!Array.isArray(data.members) || !data.members.every((m) => typeof m === 'string')) {
-      throw new Error('"members" must be an array of strings');
-    }
-    members = data.members;
+  // Parse required members/groups sections
+  if (!Array.isArray(data.members) || data.members.length === 0 || !data.members.every((m) => typeof m === 'string')) {
+    throw new Error('"members" must be a non-empty array of strings');
   }
+  const members = data.members;
 
-  let groups = null;
-  if (data.groups !== undefined) {
-    if (!Array.isArray(data.groups) || !data.groups.every((g) => typeof g === 'string')) {
-      throw new Error('"groups" must be an array of strings');
-    }
-    groups = data.groups;
+  if (!Array.isArray(data.groups) || data.groups.length === 0 || !data.groups.every((g) => typeof g === 'string')) {
+    throw new Error('"groups" must be a non-empty array of strings');
   }
+  const groups = data.groups;
 
   data.tasks.forEach((task, i) => validateTask(task, i));
   validateUniqueIds(data.tasks);
 
   // Reference checks against members/groups definitions
-  if (members) {
-    const memberSet = new Set(members);
-    for (const task of data.tasks) {
-      if (!memberSet.has(task.assignee)) {
-        throw new Error(`Task "${task.id}": assignee "${task.assignee}" is not in members list`);
-      }
+  const memberSet = new Set(members);
+  for (const task of data.tasks) {
+    if (!memberSet.has(task.assignee)) {
+      throw new Error(`Task "${task.id}": assignee "${task.assignee}" is not in members list`);
     }
   }
 
-  if (groups) {
-    const groupSet = new Set(groups);
-    for (const task of data.tasks) {
-      if (!groupSet.has(task.group)) {
-        throw new Error(`Task "${task.id}": group "${task.group}" is not in groups list`);
-      }
+  const groupSet = new Set(groups);
+  for (const task of data.tasks) {
+    if (!groupSet.has(task.group)) {
+      throw new Error(`Task "${task.id}": group "${task.group}" is not in groups list`);
     }
   }
 

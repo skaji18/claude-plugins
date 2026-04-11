@@ -106,7 +106,7 @@ tasks:
   - id: "ec-release"
     name: "EC サイトリリース"
     assignee: "田中"
-    effort: 1
+    effort: 0
     start_date: "2026-04-13"
     end_date: "2026-04-13"
     progress: 0
@@ -197,7 +197,7 @@ tasks:
   - id: "app-beta"
     name: "ベータ版配信"
     assignee: "田中"
-    effort: 1
+    effort: 0
     start_date: "2026-04-15"
     end_date: "2026-04-15"
     progress: 0
@@ -219,7 +219,7 @@ tasks:
   - id: "app-release"
     name: "アプリストア公開"
     assignee: "田中"
-    effort: 1
+    effort: 0
     start_date: "2026-04-27"
     end_date: "2026-04-27"
     progress: 0
@@ -312,7 +312,7 @@ tasks:
   - id: "infra-cutover"
     name: "本番カットオーバー"
     assignee: "高橋"
-    effort: 1
+    effort: 0
     start_date: "2026-04-11"
     end_date: "2026-04-11"
     progress: 0
