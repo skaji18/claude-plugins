@@ -1,8 +1,8 @@
 import { readFileSync } from 'node:fs';
 import yaml from 'js-yaml';
 
-const REQUIRED_TASK_FIELDS = ['id', 'name', 'assignee', 'effort', 'start_date', 'end_date', 'progress', 'depends_on', 'group', 'milestone'];
-const OPTIONAL_TASK_FIELDS = ['blocked', 'notes', 'tags', 'actual_start_date', 'actual_end_date', 'actual_effort'];
+const REQUIRED_TASK_FIELDS = ['id', 'name', 'assignee', 'effort', 'start_date', 'end_date', 'progress', 'depends_on', 'project', 'milestone'];
+const OPTIONAL_TASK_FIELDS = ['group', 'blocked', 'notes', 'tags', 'actual_start_date', 'actual_end_date', 'actual_effort'];
 const ALL_TASK_FIELDS = new Set([...REQUIRED_TASK_FIELDS, ...OPTIONAL_TASK_FIELDS]);
 const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -126,7 +126,11 @@ function validateTask(task, index) {
     }
   }
 
-  if (typeof task.group !== 'string') {
+  if (typeof task.project !== 'string') {
+    throw new Error(`Task #${index + 1} ("${task.id}"): "project" must be a string`);
+  }
+
+  if (task.group !== undefined && typeof task.group !== 'string') {
     throw new Error(`Task #${index + 1} ("${task.id}"): "group" must be a string`);
   }
 
@@ -206,10 +210,35 @@ export function loadTasks(filePath) {
   }
   const members = data.members;
 
-  if (!Array.isArray(data.groups) || data.groups.length === 0 || !data.groups.every((g) => typeof g === 'string')) {
-    throw new Error('"groups" must be a non-empty array of strings');
+  if (!Array.isArray(data.groups) || data.groups.length === 0) {
+    throw new Error('"groups" must be a non-empty array');
+  }
+
+  const projectNames = new Set();
+  for (let gi = 0; gi < data.groups.length; gi++) {
+    const entry = data.groups[gi];
+    if (!entry || typeof entry !== 'object' || typeof entry.project !== 'string') {
+      throw new Error(`groups[${gi}]: "project" must be a string`);
+    }
+    if (!Array.isArray(entry.sections) || entry.sections.length === 0) {
+      throw new Error(`groups[${gi}] ("${entry.project}"): "sections" must be a non-empty array`);
+    }
+    for (let si = 0; si < entry.sections.length; si++) {
+      if (typeof entry.sections[si] !== 'string') {
+        throw new Error(`groups[${gi}] ("${entry.project}"): sections[${si}] must be a string`);
+      }
+    }
+    if (projectNames.has(entry.project)) {
+      throw new Error(`groups: duplicate project name "${entry.project}"`);
+    }
+    projectNames.add(entry.project);
   }
   const groups = data.groups;
+
+  const projectSectionsMap = new Map();
+  for (const g of groups) {
+    projectSectionsMap.set(g.project, new Set(g.sections));
+  }
 
   data.tasks.forEach((task, i) => validateTask(task, i));
   validateUniqueIds(data.tasks);
@@ -222,10 +251,15 @@ export function loadTasks(filePath) {
     }
   }
 
-  const groupSet = new Set(groups);
   for (const task of data.tasks) {
-    if (!groupSet.has(task.group)) {
-      throw new Error(`Task "${task.id}": group "${task.group}" is not in groups list`);
+    if (!projectSectionsMap.has(task.project)) {
+      throw new Error(`Task "${task.id}": project "${task.project}" is not in groups project list`);
+    }
+    if (task.group !== undefined) {
+      const sections = projectSectionsMap.get(task.project);
+      if (!sections.has(task.group)) {
+        throw new Error(`Task "${task.id}": group "${task.group}" is not in project "${task.project}" sections`);
+      }
     }
   }
 

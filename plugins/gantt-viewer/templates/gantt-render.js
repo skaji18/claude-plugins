@@ -34,16 +34,28 @@ const GanttRender = (() => {
   }
 
   function buildRows() {
-    const groups = GanttCore.groupTasks(state.tasks);
+    const projects = GanttCore.groupTasksByProject(state.tasks);
     const rows = [];
-    for (let gi = 0; gi < groups.length; gi++) {
-      const g = groups[gi];
-      rows.push({ type: 'group', name: g.name, id: `group-${g.name}`, groupIndex: gi });
-      for (const t of g.tasks) {
-        rows.push({ type: 'task', task: t, groupName: g.name, groupIndex: gi });
+    for (let pi = 0; pi < projects.length; pi++) {
+      const p = projects[pi];
+      const projectKey = `project:${p.project}`;
+      rows.push({ type: 'project', name: p.project, collapseKey: projectKey, projectIndex: pi });
+      for (let gi = 0; gi < p.groups.length; gi++) {
+        const g = p.groups[gi];
+        const groupKey = g.name !== null ? `group:${p.project}:${g.name}` : null;
+        if (g.name !== null) {
+          rows.push({ type: 'group', name: g.name, collapseKey: groupKey, projectName: p.project, projectKey: projectKey, groupIndex: gi, projectIndex: pi });
+        }
+        for (const t of g.tasks) {
+          rows.push({ type: 'task', task: t, groupKey: groupKey, projectKey: projectKey, projectName: p.project, groupName: g.name, projectIndex: pi, groupIndex: gi });
+        }
       }
     }
     return rows;
+  }
+
+  function isTaskRowHidden(row) {
+    return state.collapsed.has(row.projectKey) || (row.groupKey && state.collapsed.has(row.groupKey));
   }
 
   function getTodayStr() {
@@ -57,16 +69,22 @@ const GanttRender = (() => {
     container.innerHTML = '';
     for (const row of state.rows) {
       const div = document.createElement('div');
-      if (row.type === 'group') {
+      if (row.type === 'project') {
+        div.className = 'sidebar-project';
+        if (state.collapsed.has(row.collapseKey)) div.classList.add('collapsed');
+        div.textContent = row.name;
+        div.addEventListener('click', () => toggleCollapse(row.collapseKey));
+      } else if (row.type === 'group') {
         div.className = 'sidebar-group';
         const colorIdx = row.groupIndex % GROUP_COLORS.length;
         div.classList.add('group-color-' + colorIdx);
-        if (state.collapsed.has(row.name)) div.classList.add('collapsed');
+        if (state.collapsed.has(row.projectKey)) div.classList.add('hidden');
+        if (state.collapsed.has(row.collapseKey)) div.classList.add('collapsed');
         div.textContent = row.name;
-        div.addEventListener('click', () => toggleGroup(row.name));
+        div.addEventListener('click', () => toggleCollapse(row.collapseKey));
       } else {
         div.className = 'sidebar-row';
-        if (state.collapsed.has(row.groupName)) div.classList.add('hidden');
+        if (isTaskRowHidden(row)) div.classList.add('hidden');
         if (state.violations.has(row.task.id)) div.classList.add('warning');
         if (state.delayed.has(row.task.id)) div.classList.add('delayed');
         if (state.filteredTasks && !state.filteredTasks.has(row.task.id)) div.classList.add('filtered-out');
@@ -201,11 +219,13 @@ const GanttRender = (() => {
       const rowDiv = document.createElement('div');
       rowDiv.className = 'timeline-row';
 
-      if (row.type === 'group') {
+      if (row.type === 'project') {
+        rowDiv.classList.add('project-row');
+      } else if (row.type === 'group') {
         rowDiv.classList.add('group-row');
+        if (state.collapsed.has(row.projectKey)) rowDiv.classList.add('hidden');
       } else {
-        const isHidden = state.collapsed.has(row.groupName);
-        if (isHidden) rowDiv.classList.add('hidden');
+        if (isTaskRowHidden(row)) rowDiv.classList.add('hidden');
         if (state.filteredTasks && !state.filteredTasks.has(row.task.id)) rowDiv.classList.add('filtered-out');
 
         rowDiv.dataset.taskId = row.task.id;
@@ -323,13 +343,20 @@ const GanttRender = (() => {
           }
         }
 
-        if (!isHidden) {
+        if (!isTaskRowHidden(row)) {
           const midY = rowIdx * rowH + rowH / 2;
           state.taskPositions.set(t.id, { startX, endX, midY });
         }
       }
       body.appendChild(rowDiv);
-      const isVisible = row.type === 'group' || !state.collapsed.has(row.groupName);
+      let isVisible;
+      if (row.type === 'project') {
+        isVisible = true;
+      } else if (row.type === 'group') {
+        isVisible = !state.collapsed.has(row.projectKey);
+      } else {
+        isVisible = !isTaskRowHidden(row);
+      }
       if (isVisible) rowIdx++;
     }
 
@@ -395,11 +422,11 @@ const GanttRender = (() => {
     body.appendChild(svg);
   }
 
-  function toggleGroup(name) {
-    if (state.collapsed.has(name)) {
-      state.collapsed.delete(name);
+  function toggleCollapse(key) {
+    if (state.collapsed.has(key)) {
+      state.collapsed.delete(key);
     } else {
-      state.collapsed.add(name);
+      state.collapsed.add(key);
     }
     render();
   }
@@ -459,7 +486,8 @@ const GanttRender = (() => {
 
   function populateFilterDropdowns() {
     const assignees = [...new Set(state.tasks.map(t => t.assignee))].sort();
-    const groups = [...new Set(state.tasks.map(t => t.group))];
+    const projects = [...new Set(state.tasks.map(t => t.project))];
+    const groups = [...new Set(state.tasks.filter(t => t.group).map(t => t.group))];
 
     const assigneeSel = document.getElementById('filter-assignee');
     for (const a of assignees) {
@@ -467,6 +495,14 @@ const GanttRender = (() => {
       opt.value = a;
       opt.textContent = a;
       assigneeSel.appendChild(opt);
+    }
+
+    const projectSel = document.getElementById('filter-project');
+    for (const p of projects) {
+      const opt = document.createElement('option');
+      opt.value = p;
+      opt.textContent = p;
+      projectSel.appendChild(opt);
     }
 
     const groupSel = document.getElementById('filter-group');
@@ -505,7 +541,7 @@ const GanttRender = (() => {
   function applyFilter(filter) {
     const today = getTodayStr();
     if (!filter || (Object.keys(filter).length === 0) ||
-        (!filter.assignee && !filter.group && !filter.delayedOnly && !filter.criticalOnly)) {
+        (!filter.assignee && !filter.group && !filter.project && !filter.delayedOnly && !filter.criticalOnly)) {
       state.filteredTasks = null;
       state.filter = {};
     } else {
@@ -712,9 +748,9 @@ const GanttRender = (() => {
   }
 
   function collapseAll() {
-    const groups = GanttCore.groupTasks(state.tasks);
-    for (const g of groups) {
-      state.collapsed.add(g.name);
+    const projects = GanttCore.groupTasksByProject(state.tasks);
+    for (const p of projects) {
+      state.collapsed.add(`project:${p.project}`);
     }
     render();
   }
@@ -843,7 +879,6 @@ const GanttRender = (() => {
       delayed: GanttCore.getDelayedTasks(data.tasks, today),
       summary: null,
       assigneeColors: GanttCore.assignColors(data.tasks),
-      groupColors: new Map(),
       filter: {},
       filteredTasks: null,
       loadViewActive: false,
@@ -852,12 +887,6 @@ const GanttRender = (() => {
       zoomFactor: 1.0,
       actualCompareActive: false,
     };
-
-    // Set up group colors
-    const groups = GanttCore.groupTasks(data.tasks);
-    groups.forEach((g, i) => {
-      state.groupColors.set(g.name, GROUP_COLORS[i % GROUP_COLORS.length]);
-    });
 
     populateFilterDropdowns();
 

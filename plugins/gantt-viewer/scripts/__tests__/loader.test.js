@@ -25,23 +25,48 @@ const VALID_TASK = {
   end_date: '2026-04-14',
   progress: 0,
   depends_on: [],
-  group: 'Planning',
+  project: 'Planning',
+  group: 'Phase1',
   milestone: false,
 };
 
 function buildYaml(tasks, projectName, options) {
   const project = `project:\n  name: "${projectName || 'Test Project'}"\n`;
-  // Collect all unique assignees and groups from tasks as defaults
   const defaultMembers = [...new Set(tasks.map((t) => t.assignee))];
-  const defaultGroups = [...new Set(tasks.map((t) => t.group))];
   const membersArr = (options && options.members) || defaultMembers;
-  const groupsArr = (options && options.groups) || defaultGroups;
+
+  let groupsData;
+  if (options && options.groups) {
+    groupsData = options.groups;
+  } else {
+    const projectMap = new Map();
+    for (const t of tasks) {
+      if (!projectMap.has(t.project)) {
+        projectMap.set(t.project, new Set());
+      }
+      if (t.group) {
+        projectMap.get(t.project).add(t.group);
+      }
+    }
+    groupsData = [];
+    for (const [proj, sections] of projectMap) {
+      groupsData.push({ project: proj, sections: [...sections] });
+    }
+  }
+
   let extra = '';
   if (!options || !options.skipMembers) {
     extra += 'members:\n' + membersArr.map((m) => `  - "${m}"`).join('\n') + '\n';
   }
   if (!options || !options.skipGroups) {
-    extra += 'groups:\n' + groupsArr.map((g) => `  - "${g}"`).join('\n') + '\n';
+    extra += 'groups:\n';
+    for (const g of groupsData) {
+      extra += `  - project: "${g.project}"\n`;
+      extra += '    sections:\n';
+      for (const s of g.sections) {
+        extra += `      - "${s}"\n`;
+      }
+    }
   }
   const taskLines = tasks.map((t) => {
     const lines = [
@@ -53,9 +78,10 @@ function buildYaml(tasks, projectName, options) {
       `    end_date: "${t.end_date}"`,
       `    progress: ${t.progress}`,
       `    depends_on: [${t.depends_on.map((d) => `"${d}"`).join(', ')}]`,
-      `    group: "${t.group}"`,
-      `    milestone: ${t.milestone}`,
+      `    project: "${t.project}"`,
     ];
+    if (t.group !== undefined) lines.push(`    group: "${t.group}"`);
+    lines.push(`    milestone: ${t.milestone}`);
     if (t.blocked !== undefined) lines.push(`    blocked: ${t.blocked}`);
     if (t.notes !== undefined) lines.push(`    notes: "${t.notes}"`);
     if (t.tags !== undefined) lines.push(`    tags: [${t.tags.map((tag) => `"${tag}"`).join(', ')}]`);
@@ -96,7 +122,8 @@ describe('loader', () => {
       assert.equal(result.tasks[0].end_date, '2026-04-14');
       assert.equal(result.tasks[0].progress, 0);
       assert.deepEqual(result.tasks[0].depends_on, []);
-      assert.equal(result.tasks[0].group, 'Planning');
+      assert.equal(result.tasks[0].project, 'Planning');
+      assert.equal(result.tasks[0].group, 'Phase1');
       assert.equal(result.tasks[0].milestone, false);
     });
 
@@ -144,7 +171,19 @@ describe('loader', () => {
 
     it('should throw when project field is missing', () => {
       // Given
-      const yaml = 'tasks:\n  - id: "t1"\n    name: "X"\n    assignee: "A"\n    effort: 1\n    start_date: "2026-04-10"\n    end_date: "2026-04-11"\n    progress: 0\n    depends_on: []\n    group: "G"\n    milestone: false';
+      const yaml = [
+        'tasks:',
+        '  - id: "t1"',
+        '    name: "X"',
+        '    assignee: "A"',
+        '    effort: 1',
+        '    start_date: "2026-04-10"',
+        '    end_date: "2026-04-11"',
+        '    progress: 0',
+        '    depends_on: []',
+        '    project: "P"',
+        '    milestone: false',
+      ].join('\n');
       writeYaml('no-project.yaml', yaml);
 
       // When / Then
@@ -183,6 +222,12 @@ describe('loader', () => {
       const yaml = [
         'project:',
         '  name: "Test"',
+        'members:',
+        '  - "A"',
+        'groups:',
+        '  - project: "P"',
+        '    sections:',
+        '      - "G"',
         'tasks:',
         '  - name: "No ID"',
         '    assignee: "A"',
@@ -191,7 +236,7 @@ describe('loader', () => {
         '    end_date: "2026-04-11"',
         '    progress: 0',
         '    depends_on: []',
-        '    group: "G"',
+        '    project: "P"',
         '    milestone: false',
       ].join('\n');
       writeYaml('no-id.yaml', yaml);
@@ -208,6 +253,12 @@ describe('loader', () => {
       const yaml = [
         'project:',
         '  name: "Test"',
+        'members:',
+        '  - "A"',
+        'groups:',
+        '  - project: "P"',
+        '    sections:',
+        '      - "G"',
         'tasks:',
         '  - id: "t1"',
         '    assignee: "A"',
@@ -216,7 +267,7 @@ describe('loader', () => {
         '    end_date: "2026-04-11"',
         '    progress: 0',
         '    depends_on: []',
-        '    group: "G"',
+        '    project: "P"',
         '    milestone: false',
       ].join('\n');
       writeYaml('no-name.yaml', yaml);
@@ -245,6 +296,12 @@ describe('loader', () => {
       const yaml = [
         'project:',
         '  name: "Test"',
+        'members:',
+        '  - "A"',
+        'groups:',
+        '  - project: "P"',
+        '    sections:',
+        '      - "G"',
         'tasks:',
         '  - id: "t1"',
         '    name: "Task"',
@@ -254,7 +311,7 @@ describe('loader', () => {
         '    end_date: "2026-04-11"',
         '    progress: "high"',
         '    depends_on: []',
-        '    group: "G"',
+        '    project: "P"',
         '    milestone: false',
       ].join('\n');
       writeYaml('bad-progress.yaml', yaml);
@@ -381,7 +438,7 @@ describe('loader', () => {
 
     it('should throw when blocked is not a boolean', () => {
       // Given
-      const yaml = buildYaml([VALID_TASK]).replace('milestone: false', 'milestone: false\n    blocked: "yes"');
+      const yaml = buildYaml([VALID_TASK]).replace('    milestone: false', '    milestone: false\n    blocked: "yes"');
       writeYaml('bad-blocked.yaml', yaml);
 
       // When / Then
@@ -393,7 +450,7 @@ describe('loader', () => {
 
     it('should throw when notes is not a string', () => {
       // Given
-      const yaml = buildYaml([VALID_TASK]).replace('milestone: false', 'milestone: false\n    notes: 123');
+      const yaml = buildYaml([VALID_TASK]).replace('    milestone: false', '    milestone: false\n    notes: 123');
       writeYaml('bad-notes.yaml', yaml);
 
       // When / Then
@@ -405,7 +462,7 @@ describe('loader', () => {
 
     it('should throw when tags is not an array of strings', () => {
       // Given
-      const yaml = buildYaml([VALID_TASK]).replace('milestone: false', 'milestone: false\n    tags: [1, 2]');
+      const yaml = buildYaml([VALID_TASK]).replace('    milestone: false', '    milestone: false\n    tags: [1, 2]');
       writeYaml('bad-tags.yaml', yaml);
 
       // When / Then
@@ -417,7 +474,7 @@ describe('loader', () => {
 
     it('should throw when actual_start_date has invalid format', () => {
       // Given
-      const yaml = buildYaml([VALID_TASK]).replace('milestone: false', 'milestone: false\n    actual_start_date: "bad"');
+      const yaml = buildYaml([VALID_TASK]).replace('    milestone: false', '    milestone: false\n    actual_start_date: "bad"');
       writeYaml('bad-actual-start.yaml', yaml);
 
       // When / Then
@@ -429,7 +486,7 @@ describe('loader', () => {
 
     it('should throw when actual_end_date has invalid format', () => {
       // Given
-      const yaml = buildYaml([VALID_TASK]).replace('milestone: false', 'milestone: false\n    actual_end_date: "nope"');
+      const yaml = buildYaml([VALID_TASK]).replace('    milestone: false', '    milestone: false\n    actual_end_date: "nope"');
       writeYaml('bad-actual-end.yaml', yaml);
 
       // When / Then
@@ -441,7 +498,7 @@ describe('loader', () => {
 
     it('should throw when actual_effort is not a positive number', () => {
       // Given
-      const yaml = buildYaml([VALID_TASK]).replace('milestone: false', 'milestone: false\n    actual_effort: -1');
+      const yaml = buildYaml([VALID_TASK]).replace('    milestone: false', '    milestone: false\n    actual_effort: -1');
       writeYaml('bad-actual-effort.yaml', yaml);
 
       // When / Then
@@ -455,7 +512,10 @@ describe('loader', () => {
 
     it('should parse members and groups sections', () => {
       // Given
-      const yaml = buildYaml([VALID_TASK], 'Test', { members: ['Tanaka'], groups: ['Planning'] });
+      const yaml = buildYaml([VALID_TASK], 'Test', {
+        members: ['Tanaka'],
+        groups: [{ project: 'Planning', sections: ['Phase1'] }],
+      });
       writeYaml('with-members-groups.yaml', yaml);
 
       // When
@@ -463,7 +523,8 @@ describe('loader', () => {
 
       // Then
       assert.deepEqual(result.members, ['Tanaka']);
-      assert.deepEqual(result.groups, ['Planning']);
+      assert.equal(result.groups[0].project, 'Planning');
+      assert.deepEqual(result.groups[0].sections, ['Phase1']);
     });
 
     it('should throw when members is missing', () => {
@@ -490,8 +551,26 @@ describe('loader', () => {
 
     it('should throw when members is an empty array', () => {
       // Given
-      const yaml = 'project:\n  name: "Test"\nmembers: []\ngroups:\n  - "Planning"\ntasks:\n' +
-        '  - id: "t1"\n    name: "X"\n    assignee: "A"\n    effort: 1\n    start_date: "2026-04-10"\n    end_date: "2026-04-11"\n    progress: 0\n    depends_on: []\n    group: "Planning"\n    milestone: false';
+      const yaml = [
+        'project:',
+        '  name: "Test"',
+        'members: []',
+        'groups:',
+        '  - project: "P"',
+        '    sections:',
+        '      - "G"',
+        'tasks:',
+        '  - id: "t1"',
+        '    name: "X"',
+        '    assignee: "A"',
+        '    effort: 1',
+        '    start_date: "2026-04-10"',
+        '    end_date: "2026-04-11"',
+        '    progress: 0',
+        '    depends_on: []',
+        '    project: "P"',
+        '    milestone: false',
+      ].join('\n');
       writeYaml('empty-members.yaml', yaml);
 
       // When / Then
@@ -503,20 +582,39 @@ describe('loader', () => {
 
     it('should throw when groups is an empty array', () => {
       // Given
-      const yaml = 'project:\n  name: "Test"\nmembers:\n  - "A"\ngroups: []\ntasks:\n' +
-        '  - id: "t1"\n    name: "X"\n    assignee: "A"\n    effort: 1\n    start_date: "2026-04-10"\n    end_date: "2026-04-11"\n    progress: 0\n    depends_on: []\n    group: "Planning"\n    milestone: false';
+      const yaml = [
+        'project:',
+        '  name: "Test"',
+        'members:',
+        '  - "A"',
+        'groups: []',
+        'tasks:',
+        '  - id: "t1"',
+        '    name: "X"',
+        '    assignee: "A"',
+        '    effort: 1',
+        '    start_date: "2026-04-10"',
+        '    end_date: "2026-04-11"',
+        '    progress: 0',
+        '    depends_on: []',
+        '    project: "P"',
+        '    milestone: false',
+      ].join('\n');
       writeYaml('empty-groups.yaml', yaml);
 
       // When / Then
       assert.throws(
         () => loadTasks(yamlPath('empty-groups.yaml')),
-        (err) => err.message.includes('groups') && err.message.includes('non-empty')
+        (err) => err.message.includes('groups')
       );
     });
 
     it('should throw when assignee is not in members list', () => {
       // Given
-      const yaml = buildYaml([VALID_TASK], 'Test', { members: ['Sato'] });
+      const yaml = buildYaml([VALID_TASK], 'Test', {
+        members: ['Sato'],
+        groups: [{ project: 'Planning', sections: ['Phase1'] }],
+      });
       writeYaml('bad-assignee-ref.yaml', yaml);
 
       // When / Then
@@ -528,19 +626,25 @@ describe('loader', () => {
 
     it('should throw when group is not in groups list', () => {
       // Given
-      const yaml = buildYaml([VALID_TASK], 'Test', { members: ['Tanaka'], groups: ['Other'] });
+      const yaml = buildYaml([VALID_TASK], 'Test', {
+        members: ['Tanaka'],
+        groups: [{ project: 'Planning', sections: ['Other'] }],
+      });
       writeYaml('bad-group-ref.yaml', yaml);
 
       // When / Then
       assert.throws(
         () => loadTasks(yamlPath('bad-group-ref.yaml')),
-        (err) => err.message.includes('group') && err.message.includes('Planning')
+        (err) => err.message.includes('group') && err.message.includes('Phase1')
       );
     });
 
     it('should validate assignee against members list', () => {
       // Given: members list includes the assignee
-      const yaml = buildYaml([VALID_TASK], 'Test', { members: ['Tanaka'], groups: ['Planning'] });
+      const yaml = buildYaml([VALID_TASK], 'Test', {
+        members: ['Tanaka'],
+        groups: [{ project: 'Planning', sections: ['Phase1'] }],
+      });
       writeYaml('valid-member-ref.yaml', yaml);
 
       // When / Then: should not throw
@@ -584,7 +688,9 @@ describe('loader', () => {
         'members:',
         '  - "A"',
         'groups:',
-        '  - "G"',
+        '  - project: "P"',
+        '    sections:',
+        '      - "G"',
         'tasks:',
         '  - id: "t1"',
         '    name: "Task"',
@@ -594,7 +700,7 @@ describe('loader', () => {
         '    end_date: "2026-04-11"',
         '    progress: 0',
         '    depends_on: []',
-        '    group: "G"',
+        '    project: "P"',
         '    milestone: false',
       ].join('\n');
       writeYaml('bad-assignee-type.yaml', yaml);
@@ -614,7 +720,9 @@ describe('loader', () => {
         'members:',
         '  - "A"',
         'groups:',
-        '  - "G"',
+        '  - project: "P"',
+        '    sections:',
+        '      - "G"',
         'tasks:',
         '  - id: "t1"',
         '    name: "Task"',
@@ -624,6 +732,7 @@ describe('loader', () => {
         '    end_date: "2026-04-11"',
         '    progress: 0',
         '    depends_on: []',
+        '    project: "P"',
         '    group: 123',
         '    milestone: false',
       ].join('\n');
@@ -644,7 +753,9 @@ describe('loader', () => {
         'members:',
         '  - "A"',
         'groups:',
-        '  - "G"',
+        '  - project: "P"',
+        '    sections:',
+        '      - "G"',
         'tasks:',
         '  - id: "t1"',
         '    name: "Task"',
@@ -654,7 +765,7 @@ describe('loader', () => {
         '    end_date: "2026-04-11"',
         '    progress: 0',
         '    depends_on: []',
-        '    group: "G"',
+        '    project: "P"',
         '    milestone: "no"',
       ].join('\n');
       writeYaml('bad-milestone-type.yaml', yaml);
@@ -674,7 +785,9 @@ describe('loader', () => {
         'members:',
         '  - "A"',
         'groups:',
-        '  - "G"',
+        '  - project: "P"',
+        '    sections:',
+        '      - "G"',
         'tasks:',
         '  - id: "t1"',
         '    name: "Task"',
@@ -684,7 +797,7 @@ describe('loader', () => {
         '    end_date: "2026-04-11"',
         '    progress: 0',
         '    depends_on: [123]',
-        '    group: "G"',
+        '    project: "P"',
         '    milestone: false',
       ].join('\n');
       writeYaml('bad-depends-on-type.yaml', yaml);

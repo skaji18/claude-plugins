@@ -183,21 +183,31 @@ const GanttCore = (() => {
     return base;
   }
 
-  function groupTasks(tasks) {
-    const groups = [];
-    const groupMap = new Map();
+  function groupTasksByProject(tasks) {
+    const projects = [];
+    const projectMap = new Map();
 
     for (const t of tasks) {
-      const g = t.group;
-      if (!groupMap.has(g)) {
-        const entry = { name: g, tasks: [] };
-        groupMap.set(g, entry);
-        groups.push(entry);
+      const projectName = t.project;
+      const groupName = t.group !== undefined ? t.group : null;
+
+      if (!projectMap.has(projectName)) {
+        const entry = { project: projectName, groups: [], _groupMap: new Map() };
+        projectMap.set(projectName, entry);
+        projects.push(entry);
       }
-      groupMap.get(g).tasks.push(t);
+
+      const proj = projectMap.get(projectName);
+      if (!proj._groupMap.has(groupName)) {
+        const groupEntry = { name: groupName, tasks: [] };
+        proj._groupMap.set(groupName, groupEntry);
+        proj.groups.push(groupEntry);
+      }
+
+      proj._groupMap.get(groupName).tasks.push(t);
     }
 
-    return groups;
+    return projects.map(function(p) { return { project: p.project, groups: p.groups }; });
   }
 
   function getDelayedTasks(tasks, today) {
@@ -243,6 +253,7 @@ const GanttCore = (() => {
     const result = new Set();
     for (const t of tasks) {
       let match = true;
+      if (filter.project && t.project !== filter.project) match = false;
       if (filter.assignee && t.assignee !== filter.assignee) match = false;
       if (filter.group && t.group !== filter.group) match = false;
       if (filter.delayedOnly && !delayed.has(t.id)) match = false;
@@ -330,7 +341,7 @@ const GanttCore = (() => {
     checkViolations,
     getDateRange,
     getDateRangeForMode,
-    groupTasks,
+    groupTasksByProject,
     getDelayedTasks,
     calculateSummary,
     filterTasks,

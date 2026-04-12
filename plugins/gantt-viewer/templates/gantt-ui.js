@@ -26,11 +26,13 @@ const GanttUI = (() => {
 
   function bindFilterEvents() {
     const assigneeSel = document.getElementById('filter-assignee');
+    const projectSel = document.getElementById('filter-project');
     const groupSel = document.getElementById('filter-group');
     const statusSel = document.getElementById('filter-status');
 
     function applyCurrentFilter() {
       const filter = {};
+      if (projectSel.value) filter.project = projectSel.value;
       if (assigneeSel.value) filter.assignee = assigneeSel.value;
       if (groupSel.value) filter.group = groupSel.value;
       if (statusSel.value === 'delayed') filter.delayedOnly = true;
@@ -39,6 +41,7 @@ const GanttUI = (() => {
     }
 
     assigneeSel.addEventListener('change', applyCurrentFilter);
+    projectSel.addEventListener('change', applyCurrentFilter);
     groupSel.addEventListener('change', applyCurrentFilter);
     statusSel.addEventListener('change', applyCurrentFilter);
   }

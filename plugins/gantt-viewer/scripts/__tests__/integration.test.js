@@ -37,9 +37,15 @@ members:
   - "Suzuki"
 
 groups:
-  - "Planning"
-  - "Development"
-  - "QA"
+  - project: "Planning"
+    sections:
+      - "Analysis"
+  - project: "Development"
+    sections:
+      - "Coding"
+  - project: "QA"
+    sections:
+      - "Testing"
 
 tasks:
   - id: "design"
@@ -50,7 +56,8 @@ tasks:
     end_date: "2026-04-14"
     progress: 100
     depends_on: []
-    group: "Planning"
+    project: "Planning"
+    group: "Analysis"
     milestone: false
   - id: "impl"
     name: "Implementation"
@@ -60,7 +67,8 @@ tasks:
     end_date: "2026-04-21"
     progress: 50
     depends_on: ["design"]
-    group: "Development"
+    project: "Development"
+    group: "Coding"
     milestone: false
   - id: "test"
     name: "Testing"
@@ -70,7 +78,8 @@ tasks:
     end_date: "2026-04-25"
     progress: 0
     depends_on: ["impl"]
-    group: "QA"
+    project: "QA"
+    group: "Testing"
     milestone: false
 `;
 
@@ -83,9 +92,15 @@ members:
   - "Admin"
 
 groups:
-  - "Planning"
-  - "Development"
-  - "Release"
+  - project: "Planning"
+    sections:
+      - "Analysis"
+  - project: "Development"
+    sections:
+      - "Coding"
+  - project: "Release"
+    sections:
+      - "Deploy"
 
 tasks:
   - id: "design"
@@ -96,7 +111,8 @@ tasks:
     end_date: "2026-04-14"
     progress: 0
     depends_on: []
-    group: "Planning"
+    project: "Planning"
+    group: "Analysis"
     milestone: false
   - id: "impl"
     name: "Implementation"
@@ -106,7 +122,8 @@ tasks:
     end_date: "2026-04-10"
     progress: 0
     depends_on: ["design"]
-    group: "Development"
+    project: "Development"
+    group: "Coding"
     milestone: false
   - id: "deploy"
     name: "Deploy"
@@ -116,7 +133,8 @@ tasks:
     end_date: "2026-04-20"
     progress: 0
     depends_on: ["revieww"]
-    group: "Release"
+    project: "Release"
+    group: "Deploy"
     milestone: false
 `;
 
@@ -192,7 +210,9 @@ members:
   - "Y"
 
 groups:
-  - "G"
+  - project: "P"
+    sections:
+      - "G"
 
 tasks:
   - id: "a"
@@ -203,6 +223,7 @@ tasks:
     end_date: "2026-04-11"
     progress: 0
     depends_on: ["b"]
+    project: "P"
     group: "G"
     milestone: false
   - id: "b"
@@ -213,6 +234,7 @@ tasks:
     end_date: "2026-04-11"
     progress: 0
     depends_on: ["a"]
+    project: "P"
     group: "G"
     milestone: false
 `;

@@ -105,7 +105,10 @@
     .sidebar-row.warning { outline: 2px solid var(--color-warning); outline-offset: -2px; }
     .sidebar-row.delayed { background: repeating-linear-gradient(135deg, transparent, transparent 4px, rgba(231,76,60,0.06) 4px, rgba(231,76,60,0.06) 8px); outline: 1px solid rgba(231,76,60,0.3); outline-offset: -1px; }
     .sidebar-row.filtered-out { opacity: 0.3; }
-    .sidebar-group { height: var(--row-height); display: flex; align-items: center; padding: 0 8px; background: var(--color-group-bg); font-weight: bold; cursor: pointer; border-bottom: 1px solid #ddd; border-left: 4px solid transparent; }
+    .sidebar-project { height: var(--row-height); display: flex; align-items: center; padding: 0 8px; background: #e0e4e8; font-weight: bold; font-size: 14px; cursor: pointer; border-bottom: 1px solid #ccc; border-left: 4px solid #4a90d9; }
+    .sidebar-project::before { content: "\25BC"; margin-right: 6px; font-size: 10px; transition: transform 0.2s; }
+    .sidebar-project.collapsed::before { transform: rotate(-90deg); }
+    .sidebar-group { height: var(--row-height); display: flex; align-items: center; padding: 0 8px 0 20px; background: var(--color-group-bg); font-weight: bold; cursor: pointer; border-bottom: 1px solid #ddd; border-left: 4px solid transparent; }
     .sidebar-group.group-color-0 { border-left-color: hsl(210, 70%, 50%); }
     .sidebar-group.group-color-1 { border-left-color: hsl(150, 70%, 40%); }
     .sidebar-group.group-color-2 { border-left-color: hsl(30, 80%, 50%); }
@@ -120,6 +123,7 @@
     /* Timeline body (bottom-right, normal flow) */
     #timeline-body { grid-row: 2; grid-column: 2; position: relative; }
     .timeline-row { height: var(--row-height); position: relative; border-bottom: 1px solid #f0f0f0; }
+    .timeline-row.project-row { background: #e0e4e8; }
     .timeline-row.group-row { background: var(--color-group-bg); }
     .timeline-row.filtered-out { opacity: 0.3; }
 
@@ -318,6 +322,7 @@
     <button id="btn-expand-all">全展開</button>
     <button id="btn-collapse-all">全折りたたみ</button>
     <div class="controls-separator"></div>
+    <select id="filter-project"><option value="">プロジェクト: 全て</option></select>
     <select id="filter-assignee"><option value="">担当者: 全て</option></select>
     <select id="filter-group"><option value="">グループ: 全て</option></select>
     <select id="filter-status">

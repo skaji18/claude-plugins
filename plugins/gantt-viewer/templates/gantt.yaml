@@ -11,12 +11,23 @@ members:
   - "伊藤"
 
 groups:
-  - "EC サイトリニューアル"
-  - "モバイルアプリ開発"
-  - "インフラ移行"
+  - project: "ECサイトリニューアル"
+    sections:
+      - "設計"
+      - "実装"
+      - "テスト"
+  - project: "モバイルアプリ開発"
+    sections:
+      - "設計"
+      - "実装"
+      - "テスト"
+  - project: "インフラ移行"
+    sections:
+      - "計画"
+      - "構築"
 
 tasks:
-  # ── EC サイトリニューアル ──────────────────────────────
+  # ── ECサイトリニューアル ──────────────────────────────
   - id: "ec-req"
     name: "EC 要件定義"
     assignee: "田中"
@@ -25,7 +36,8 @@ tasks:
     end_date: "2026-02-06"
     progress: 100
     depends_on: []
-    group: "EC サイトリニューアル"
+    project: "ECサイトリニューアル"
+    group: "設計"
     milestone: false
     actual_start_date: "2026-02-02"
     actual_end_date: "2026-02-05"
@@ -39,7 +51,8 @@ tasks:
     end_date: "2026-02-20"
     progress: 100
     depends_on: ["ec-req"]
-    group: "EC サイトリニューアル"
+    project: "ECサイトリニューアル"
+    group: "設計"
     milestone: false
 
   - id: "ec-api"
@@ -50,7 +63,8 @@ tasks:
     end_date: "2026-03-06"
     progress: 100
     depends_on: ["ec-req"]
-    group: "EC サイトリニューアル"
+    project: "ECサイトリニューアル"
+    group: "実装"
     milestone: false
 
   - id: "ec-front"
@@ -61,7 +75,8 @@ tasks:
     end_date: "2026-03-13"
     progress: 85
     depends_on: ["ec-uidesign"]
-    group: "EC サイトリニューアル"
+    project: "ECサイトリニューアル"
+    group: "実装"
     milestone: false
     actual_start_date: "2026-02-24"
     actual_effort: 10
@@ -75,7 +90,8 @@ tasks:
     end_date: "2026-03-20"
     progress: 60
     depends_on: ["ec-api"]
-    group: "EC サイトリニューアル"
+    project: "ECサイトリニューアル"
+    group: "実装"
     milestone: false
     blocked: true
     notes: "外部決済プロバイダのAPI仕様変更待ち"
@@ -89,7 +105,8 @@ tasks:
     end_date: "2026-04-03"
     progress: 40
     depends_on: ["ec-front", "ec-payment"]
-    group: "EC サイトリニューアル"
+    project: "ECサイトリニューアル"
+    group: "テスト"
     milestone: false
 
   - id: "ec-perf"
@@ -100,7 +117,8 @@ tasks:
     end_date: "2026-04-10"
     progress: 10
     depends_on: ["ec-integ"]
-    group: "EC サイトリニューアル"
+    project: "ECサイトリニューアル"
+    group: "テスト"
     milestone: false
 
   - id: "ec-release"
@@ -111,7 +129,8 @@ tasks:
     end_date: "2026-04-13"
     progress: 0
     depends_on: ["ec-perf"]
-    group: "EC サイトリニューアル"
+    project: "ECサイトリニューアル"
+    group: "テスト"
     milestone: true
 
   # ── モバイルアプリ開発 ──────────────────────────────
@@ -123,7 +142,8 @@ tasks:
     end_date: "2026-02-13"
     progress: 100
     depends_on: []
-    group: "モバイルアプリ開発"
+    project: "モバイルアプリ開発"
+    group: "設計"
     milestone: false
 
   - id: "app-design"
@@ -134,7 +154,8 @@ tasks:
     end_date: "2026-03-02"
     progress: 100
     depends_on: ["app-req"]
-    group: "モバイルアプリ開発"
+    project: "モバイルアプリ開発"
+    group: "設計"
     milestone: false
 
   - id: "app-ios"
@@ -145,7 +166,8 @@ tasks:
     end_date: "2026-04-03"
     progress: 70
     depends_on: ["app-design"]
-    group: "モバイルアプリ開発"
+    project: "モバイルアプリ開発"
+    group: "実装"
     milestone: false
 
   - id: "app-android"
@@ -156,7 +178,8 @@ tasks:
     end_date: "2026-04-03"
     progress: 55
     depends_on: ["app-design"]
-    group: "モバイルアプリ開発"
+    project: "モバイルアプリ開発"
+    group: "実装"
     milestone: false
     notes: "Kotlin Multiplatform への移行を検討中"
     tags: ["android", "kotlin"]
@@ -169,7 +192,8 @@ tasks:
     end_date: "2026-03-20"
     progress: 100
     depends_on: ["app-design"]
-    group: "モバイルアプリ開発"
+    project: "モバイルアプリ開発"
+    group: "実装"
     milestone: false
 
   - id: "app-apibridge"
@@ -180,7 +204,8 @@ tasks:
     end_date: "2026-04-03"
     progress: 30
     depends_on: ["app-push", "ec-api"]
-    group: "モバイルアプリ開発"
+    project: "モバイルアプリ開発"
+    group: "実装"
     milestone: false
 
   - id: "app-test"
@@ -191,7 +216,8 @@ tasks:
     end_date: "2026-04-14"
     progress: 0
     depends_on: ["app-ios", "app-android", "app-apibridge"]
-    group: "モバイルアプリ開発"
+    project: "モバイルアプリ開発"
+    group: "テスト"
     milestone: false
 
   - id: "app-beta"
@@ -202,7 +228,8 @@ tasks:
     end_date: "2026-04-15"
     progress: 0
     depends_on: ["app-test"]
-    group: "モバイルアプリ開発"
+    project: "モバイルアプリ開発"
+    group: "テスト"
     milestone: true
 
   - id: "app-feedback"
@@ -213,7 +240,8 @@ tasks:
     end_date: "2026-04-22"
     progress: 0
     depends_on: ["app-beta"]
-    group: "モバイルアプリ開発"
+    project: "モバイルアプリ開発"
+    group: "テスト"
     milestone: false
 
   - id: "app-release"
@@ -224,7 +252,8 @@ tasks:
     end_date: "2026-04-27"
     progress: 0
     depends_on: ["app-feedback"]
-    group: "モバイルアプリ開発"
+    project: "モバイルアプリ開発"
+    group: "テスト"
     milestone: true
 
   # ── インフラ移行 (AWS → GCP) ──────────────────────────
@@ -236,7 +265,8 @@ tasks:
     end_date: "2026-02-06"
     progress: 100
     depends_on: []
-    group: "インフラ移行"
+    project: "インフラ移行"
+    group: "計画"
     milestone: false
 
   - id: "infra-design"
@@ -247,7 +277,8 @@ tasks:
     end_date: "2026-02-20"
     progress: 100
     depends_on: ["infra-assess"]
-    group: "インフラ移行"
+    project: "インフラ移行"
+    group: "計画"
     milestone: false
 
   - id: "infra-iac"
@@ -258,7 +289,8 @@ tasks:
     end_date: "2026-03-13"
     progress: 90
     depends_on: ["infra-design"]
-    group: "インフラ移行"
+    project: "インフラ移行"
+    group: "構築"
     milestone: false
     actual_start_date: "2026-02-23"
     actual_end_date: "2026-03-12"
@@ -273,7 +305,8 @@ tasks:
     end_date: "2026-03-18"
     progress: 80
     depends_on: ["infra-design"]
-    group: "インフラ移行"
+    project: "インフラ移行"
+    group: "構築"
     milestone: false
 
   - id: "infra-db"
@@ -284,7 +317,8 @@ tasks:
     end_date: "2026-03-27"
     progress: 50
     depends_on: ["infra-iac"]
-    group: "インフラ移行"
+    project: "インフラ移行"
+    group: "構築"
     milestone: false
 
   - id: "infra-monitor"
@@ -295,7 +329,8 @@ tasks:
     end_date: "2026-04-03"
     progress: 20
     depends_on: ["infra-iac", "infra-cicd"]
-    group: "インフラ移行"
+    project: "インフラ移行"
+    group: "構築"
     milestone: false
 
   - id: "infra-dryrun"
@@ -306,7 +341,8 @@ tasks:
     end_date: "2026-04-08"
     progress: 0
     depends_on: ["infra-db", "infra-monitor"]
-    group: "インフラ移行"
+    project: "インフラ移行"
+    group: "構築"
     milestone: false
 
   - id: "infra-cutover"
@@ -317,5 +353,6 @@ tasks:
     end_date: "2026-04-11"
     progress: 0
     depends_on: ["infra-dryrun"]
-    group: "インフラ移行"
+    project: "インフラ移行"
+    group: "構築"
     milestone: true

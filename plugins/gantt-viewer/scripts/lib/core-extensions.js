@@ -64,7 +64,7 @@ export function calculateSummary(tasks, criticalPath, today) {
 
 /**
  * Filter tasks by criteria (AND logic). Returns Set of matching task IDs.
- * filter: { assignee?, group?, delayedOnly?, criticalOnly? }
+ * filter: { assignee?, group?, project?, delayedOnly?, criticalOnly? }
  * context: { today, criticalPath (Set of task IDs) }
  */
 export function filterTasks(tasks, filter, context = {}) {
@@ -75,6 +75,9 @@ export function filterTasks(tasks, filter, context = {}) {
   for (const t of tasks) {
     let match = true;
 
+    if (filter.project && t.project !== filter.project) {
+      match = false;
+    }
     if (filter.assignee && t.assignee !== filter.assignee) {
       match = false;
     }
@@ -93,6 +96,39 @@ export function filterTasks(tasks, filter, context = {}) {
     }
   }
   return result;
+}
+
+/**
+ * Group tasks by project, then by group within each project.
+ * Returns: [{project: string, groups: [{name: string|null, tasks: Task[]}]}]
+ * Tasks without a group are placed in a null-name group.
+ * Insertion order of projects and groups is preserved.
+ */
+export function groupTasksByProject(tasks) {
+  const projects = [];
+  const projectMap = new Map();
+
+  for (const t of tasks) {
+    const projectName = t.project;
+    const groupName = t.group !== undefined ? t.group : null;
+
+    if (!projectMap.has(projectName)) {
+      const entry = { project: projectName, groups: [], groupMap: new Map() };
+      projectMap.set(projectName, entry);
+      projects.push(entry);
+    }
+
+    const proj = projectMap.get(projectName);
+    if (!proj.groupMap.has(groupName)) {
+      const groupEntry = { name: groupName, tasks: [] };
+      proj.groupMap.set(groupName, groupEntry);
+      proj.groups.push(groupEntry);
+    }
+
+    proj.groupMap.get(groupName).tasks.push(t);
+  }
+
+  return projects.map((p) => ({ project: p.project, groups: p.groups }));
 }
 
 /**
