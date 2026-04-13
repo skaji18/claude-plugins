@@ -226,8 +226,14 @@ const GanttCore = (() => {
     if (tasks.length === 0) {
       return { overallProgress: 0, delayedCount: 0, criticalDays: 0 };
     }
-    const totalProgress = tasks.reduce((sum, t) => sum + t.progress, 0);
-    const overallProgress = Math.round(totalProgress / tasks.length);
+    let weightedSum = 0;
+    let totalDuration = 0;
+    for (const t of tasks) {
+      const duration = daysBetween(parseDate(t.start_date), parseDate(t.end_date));
+      weightedSum += duration * t.progress;
+      totalDuration += duration;
+    }
+    const overallProgress = totalDuration > 0 ? Math.round(weightedSum / totalDuration) : 0;
     const delayed = getDelayedTasks(tasks, today);
     const delayedCount = delayed.size;
 

@@ -90,12 +90,12 @@ describe('getDelayedTasks', () => {
 });
 
 describe('calculateSummary', () => {
-  it('should calculate correct average progress', () => {
-    // Given
+  it('should calculate duration-weighted average when all tasks have equal duration', () => {
+    // Given: all tasks have same duration (4 days each), so weighted average = simple average
     const tasks = [
-      makeTask({ id: 'a', progress: 100 }),
-      makeTask({ id: 'b', progress: 50 }),
-      makeTask({ id: 'c', progress: 0 }),
+      makeTask({ id: 'a', start_date: '2026-04-10', end_date: '2026-04-14', progress: 100 }),
+      makeTask({ id: 'b', start_date: '2026-04-10', end_date: '2026-04-14', progress: 50 }),
+      makeTask({ id: 'c', start_date: '2026-04-10', end_date: '2026-04-14', progress: 0 }),
     ];
     const criticalPath = { path: new Set(['a', 'b', 'c']), totalDays: 15 };
     const today = '2026-04-01';
@@ -103,8 +103,92 @@ describe('calculateSummary', () => {
     // When
     const result = calculateSummary(tasks, criticalPath, today);
 
-    // Then
+    // Then: Σ(4*100 + 4*50 + 4*0) / Σ(4+4+4) = 600/12 = 50
     assert.equal(result.overallProgress, 50);
+  });
+
+  it('should weight progress by task duration', () => {
+    // Given: short task (2 days, 100%) vs long task (10 days, 0%)
+    const tasks = [
+      makeTask({ id: 'short', start_date: '2026-04-10', end_date: '2026-04-12', progress: 100 }),
+      makeTask({ id: 'long', start_date: '2026-04-10', end_date: '2026-04-20', progress: 0 }),
+    ];
+    const criticalPath = { path: new Set(), totalDays: 0 };
+    const today = '2026-04-01';
+
+    // When
+    const result = calculateSummary(tasks, criticalPath, today);
+
+    // Then: Σ(2*100 + 10*0) / Σ(2+10) = 200/12 = 16.67 → 17
+    // Simple average would be (100+0)/2 = 50
+    assert.equal(result.overallProgress, 17);
+  });
+
+  it('should give more weight to longer tasks', () => {
+    // Given: 1-day task (100%) vs 14-day task (50%)
+    const tasks = [
+      makeTask({ id: 'tiny', start_date: '2026-04-10', end_date: '2026-04-11', progress: 100 }),
+      makeTask({ id: 'large', start_date: '2026-04-10', end_date: '2026-04-24', progress: 50 }),
+    ];
+    const criticalPath = { path: new Set(), totalDays: 0 };
+    const today = '2026-04-01';
+
+    // When
+    const result = calculateSummary(tasks, criticalPath, today);
+
+    // Then: Σ(1*100 + 14*50) / Σ(1+14) = 800/15 = 53.33 → 53
+    // Simple average would be (100+50)/2 = 75
+    assert.equal(result.overallProgress, 53);
+  });
+
+  it('should exclude zero-duration tasks (milestones) from weighted average', () => {
+    // Given: milestone (0 days) + regular task (10 days)
+    const tasks = [
+      makeTask({ id: 'ms', start_date: '2026-04-10', end_date: '2026-04-10', progress: 100, milestone: true }),
+      makeTask({ id: 'regular', start_date: '2026-04-10', end_date: '2026-04-20', progress: 50 }),
+    ];
+    const criticalPath = { path: new Set(), totalDays: 0 };
+    const today = '2026-04-01';
+
+    // When
+    const result = calculateSummary(tasks, criticalPath, today);
+
+    // Then: Σ(0*100 + 10*50) / Σ(0+10) = 500/10 = 50
+    // Milestone's progress is effectively ignored due to zero duration weight
+    assert.equal(result.overallProgress, 50);
+  });
+
+  it('should return 0 when all tasks have zero duration', () => {
+    // Given: all tasks are milestones (0 days)
+    const tasks = [
+      makeTask({ id: 'ms1', start_date: '2026-04-10', end_date: '2026-04-10', progress: 50, milestone: true }),
+      makeTask({ id: 'ms2', start_date: '2026-04-15', end_date: '2026-04-15', progress: 100, milestone: true }),
+    ];
+    const criticalPath = { path: new Set(), totalDays: 0 };
+    const today = '2026-04-01';
+
+    // When
+    const result = calculateSummary(tasks, criticalPath, today);
+
+    // Then: totalDuration = 0, so overallProgress = 0 (zero-division guard)
+    assert.equal(result.overallProgress, 0);
+  });
+
+  it('should calculate weighted average with three tasks of different durations', () => {
+    // Given: 3 tasks with varying durations and progress
+    const tasks = [
+      makeTask({ id: 'a', start_date: '2026-04-01', end_date: '2026-04-04', progress: 100 }), // 3 days
+      makeTask({ id: 'b', start_date: '2026-04-01', end_date: '2026-04-11', progress: 50 }),  // 10 days
+      makeTask({ id: 'c', start_date: '2026-04-01', end_date: '2026-04-08', progress: 0 }),   // 7 days
+    ];
+    const criticalPath = { path: new Set(), totalDays: 0 };
+    const today = '2026-04-01';
+
+    // When
+    const result = calculateSummary(tasks, criticalPath, today);
+
+    // Then: Σ(3*100 + 10*50 + 7*0) / Σ(3+10+7) = 800/20 = 40
+    assert.equal(result.overallProgress, 40);
   });
 
   it('should count delayed tasks correctly', () => {
