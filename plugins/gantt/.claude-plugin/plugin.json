@@ -1,5 +1,5 @@
 {
-  "name": "gantt-viewer",
+  "name": "gantt",
   "version": "1.1.0",
   "description": "業務用ガントチャートビューア。YAML でタスクデータを管理し、HTML で閲覧、CLI で整合性チェック・サマリー表示を行う Claude Code プラグイン。",
   "author": {

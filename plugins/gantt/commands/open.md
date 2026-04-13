@@ -3,7 +3,7 @@ description: ガントチャート YAML をブラウザで表示する
 allowed-tools: [Bash]
 ---
 
-# gantt-viewer:open
+# gantt:open
 
 引数で渡された YAML ファイルから自己完結 HTML を生成し、ブラウザで開きます。
 

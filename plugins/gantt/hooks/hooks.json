@@ -1,5 +1,5 @@
 {
-  "description": "gantt-viewer plugin hooks",
+  "description": "gantt plugin hooks",
   "hooks": {
     "SessionStart": [
       {

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# PostToolUse hook for gantt-viewer plugin.
+# PostToolUse hook for gantt plugin.
 # Runs check.js after gantt.yaml is edited via Write or Edit tool.
 #
 # Input: JSON on stdin with tool_input.file_path
@@ -39,7 +39,7 @@ fi
 GANTT_YAML="$FILE_PATH"
 
 if [ ! -f "$GANTT_YAML" ]; then
-  echo '{"hookSpecificOutput":{"hookEventName":"PostToolUse","additionalContext":"[gantt-viewer] WARNING: gantt.yaml not found at '"$GANTT_YAML"'"}}'
+  echo '{"hookSpecificOutput":{"hookEventName":"PostToolUse","additionalContext":"[gantt] WARNING: gantt.yaml not found at '"$GANTT_YAML"'"}}'
   exit 0
 fi
 
@@ -53,17 +53,17 @@ WARN_COUNT="$(echo "$CHECK_OUTPUT" | grep -c '^\[WARN\]' || true)"
 # Build response
 if [ "$ERROR_COUNT" -gt 0 ]; then
   # Errors found - report them clearly
-  CONTEXT="[gantt-viewer] gantt.yaml validation completed with ${ERROR_COUNT} ERROR(s) and ${WARN_COUNT} WARNING(s). Please fix the ERROR(s) before proceeding.\n\n${CHECK_OUTPUT}"
+  CONTEXT="[gantt] gantt.yaml validation completed with ${ERROR_COUNT} ERROR(s) and ${WARN_COUNT} WARNING(s). Please fix the ERROR(s) before proceeding.\n\n${CHECK_OUTPUT}"
   echo "{\"hookSpecificOutput\":{\"hookEventName\":\"PostToolUse\",\"additionalContext\":$(node -e "process.stdout.write(JSON.stringify(process.argv[1]))" "$CONTEXT")}}"
   exit 1
 elif [ "$WARN_COUNT" -gt 0 ]; then
   # Warnings only - report but don't fail
-  CONTEXT="[gantt-viewer] gantt.yaml validation passed with ${WARN_COUNT} WARNING(s).\n\n${CHECK_OUTPUT}"
+  CONTEXT="[gantt] gantt.yaml validation passed with ${WARN_COUNT} WARNING(s).\n\n${CHECK_OUTPUT}"
   echo "{\"hookSpecificOutput\":{\"hookEventName\":\"PostToolUse\",\"additionalContext\":$(node -e "process.stdout.write(JSON.stringify(process.argv[1]))" "$CONTEXT")}}"
   exit 0
 else
   # All clean
-  CONTEXT="[gantt-viewer] gantt.yaml validation passed. No errors or warnings."
+  CONTEXT="[gantt] gantt.yaml validation passed. No errors or warnings."
   echo "{\"hookSpecificOutput\":{\"hookEventName\":\"PostToolUse\",\"additionalContext\":$(node -e "process.stdout.write(JSON.stringify(process.argv[1]))" "$CONTEXT")}}"
   exit 0
 fi

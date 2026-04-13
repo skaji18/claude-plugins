@@ -61,7 +61,7 @@ ${uiJs}
 
 // 4. Write to temp directory
 const timestamp = Date.now();
-const tmpDir = `/tmp/gantt-viewer-${timestamp}`;
+const tmpDir = `/tmp/gantt-${timestamp}`;
 mkdirSync(tmpDir, { recursive: true });
 const tmpPath = join(tmpDir, 'index.html');
 writeFileSync(tmpPath, html, 'utf8');

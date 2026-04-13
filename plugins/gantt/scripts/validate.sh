@@ -2,7 +2,7 @@
 
 SCRIPTS_DIR="$(dirname "$0")"
 
-echo "=== gantt-viewer plugin: validation ==="
+echo "=== gantt plugin: validation ==="
 
 echo ""
 echo "--- npm dependencies ---"

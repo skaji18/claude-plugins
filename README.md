@@ -11,7 +11,7 @@ Claude Code plugins collection by skaji18.
 | [task-tracker](plugins/task-tracker/) | Obsidian-compatible task management |
 | [project-audit](plugins/project-audit/) | Comprehensive project quality audit |
 | [smart-commit](plugins/smart-commit/) | Auto-generated commit messages from git diff |
-| [gantt-viewer](plugins/gantt-viewer/) | Interactive Gantt chart viewer with critical path analysis |
+| [gantt](plugins/gantt/) | Interactive Gantt chart viewer with critical path analysis |
 
 ## Installation
 
