@@ -61,6 +61,17 @@
       },
       "source": "./plugins/gavel",
       "category": "security"
+    },
+    {
+      "name": "gantt-viewer",
+      "description": "YAML 定義のガントチャートをブラウザで可視化。クリティカルパス分析、遅延検知、担当者ワークロード表示対応。",
+      "version": "1.0.0",
+      "author": {
+        "name": "skaji18",
+        "email": "skaji18@users.noreply.github.com"
+      },
+      "source": "./plugins/gantt-viewer",
+      "category": "productivity"
     }
   ]
 }
