@@ -165,6 +165,7 @@ const GanttRender = (() => {
         const d = GanttCore.addDays(range.start, i);
         const cell = document.createElement('div');
         cell.className = 'header-cell';
+        if (d.getDate() === 1) cell.classList.add('header-cell-month-start');
         cell.style.left = (i * colW) + 'px';
         cell.style.width = colW + 'px';
         cell.textContent = `${d.getMonth() + 1}/${d.getDate()}`;
@@ -198,7 +199,7 @@ const GanttRender = (() => {
       const dow = d.getDay();
 
       const line = document.createElement('div');
-      line.className = 'grid-line';
+      line.className = d.getDate() === 1 ? 'grid-line-month' : 'grid-line';
       line.style.left = (i * colW) + 'px';
       body.appendChild(line);
 
@@ -631,6 +632,7 @@ const GanttRender = (() => {
         const d = GanttCore.addDays(range.start, i);
         const cell = document.createElement('div');
         cell.className = 'header-cell';
+        if (d.getDate() === 1) cell.classList.add('header-cell-month-start');
         cell.style.left = (i * colW) + 'px';
         cell.style.width = colW + 'px';
         cell.textContent = `${d.getMonth() + 1}/${d.getDate()}`;
@@ -652,7 +654,7 @@ const GanttRender = (() => {
       const d = GanttCore.addDays(range.start, i);
       const dow = d.getDay();
       const line = document.createElement('div');
-      line.className = 'grid-line';
+      line.className = d.getDate() === 1 ? 'grid-line-month' : 'grid-line';
       line.style.left = (i * colW) + 'px';
       body.appendChild(line);
       if (dow === 0 || dow === 6) {
@@ -898,7 +900,7 @@ const GanttRender = (() => {
 
     // Bind UI events after initial render
     if (typeof GanttUI !== 'undefined') {
-      GanttUI.bindEvents(state);
+      GanttUI.bindEvents();
     }
   }
 
@@ -927,5 +929,6 @@ const GanttRender = (() => {
     zoomIn,
     zoomOut,
     toggleActualCompare,
+    getColWidth,
   };
 })();

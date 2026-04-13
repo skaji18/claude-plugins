@@ -2,14 +2,11 @@
 'use strict';
 
 const GanttUI = (() => {
-  let _state = null;
   let _touchStartX = 0;
   let _touchStartY = 0;
   let _drawerSwipeActive = false;
 
-  function bindEvents(state) {
-    _state = state;
-
+  function bindEvents() {
     bindFilterEvents();
     bindTodayButton();
     bindExpandCollapseButtons();
@@ -20,6 +17,7 @@ const GanttUI = (() => {
     bindZoomButtons();
     bindActualCompareButton();
     bindDependencyHighlight();
+    bindCrosshairHighlight();
   }
 
   // --- Filters ---
@@ -324,6 +322,45 @@ const GanttUI = (() => {
       const taskId = bar.dataset.taskId;
       if (!taskId) return;
       GanttRender.highlightDependencyChain(taskId);
+    });
+  }
+
+  // --- Crosshair highlight ---
+
+  function bindCrosshairHighlight() {
+    const body = document.getElementById('timeline-body');
+    let rowEl = null;
+    let colEl = null;
+
+    body.addEventListener('click', (e) => {
+      // Skip clicks on task bars — let popover handle those
+      if (e.target.closest('.task-bar, .milestone-marker')) return;
+
+      if (rowEl) { rowEl.remove(); rowEl = null; }
+      if (colEl) { colEl.remove(); colEl = null; }
+
+      const bodyRect = body.getBoundingClientRect();
+      const clickY = e.clientY - bodyRect.top;
+      const clickX = e.clientX - bodyRect.left;
+
+      const rowHeight = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--row-height'));
+      const rowIndex = Math.floor(clickY / rowHeight);
+      const rowTop = rowIndex * rowHeight;
+
+      const colW = GanttRender.getColWidth();
+      const colIndex = Math.floor(clickX / colW);
+      const colLeft = colIndex * colW;
+
+      rowEl = document.createElement('div');
+      rowEl.className = 'crosshair-row';
+      rowEl.style.top = rowTop + 'px';
+      body.appendChild(rowEl);
+
+      colEl = document.createElement('div');
+      colEl.className = 'crosshair-col';
+      colEl.style.left = colLeft + 'px';
+      colEl.style.width = colW + 'px';
+      body.appendChild(colEl);
     });
   }
 
